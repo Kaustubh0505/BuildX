@@ -1,8 +1,9 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const { createProjectStore, ProjectStoreError } = require('./project-store.cjs')
 const { createGenerationService, GenerationError } = require('./generation.cjs')
+const { createExportService, ExportError } = require('./exports.cjs')
 
 app.setName('BuildX')
 
@@ -14,14 +15,22 @@ if (!app.isPackaged && process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_
   app.setPath('userData', directory)
 }
 
-const unavailable = () => ({
-  ok: false,
-  code: 'NOT_AVAILABLE_YET',
-  message: 'This feature is not available yet.',
-})
-
-ipcMain.handle('exports:markdown', unavailable)
-ipcMain.handle('exports:pdf', unavailable)
+function registerExportHandlers(service) {
+  for (const format of ['markdown', 'pdf']) {
+    ipcMain.handle(`exports:${format}`, async (event, id) => {
+      try {
+        const window = BrowserWindow.fromWebContents(event.sender)
+        const result = await service[format](id, window)
+        return { ok: true, ...result }
+      } catch (error) {
+        if (error instanceof ExportError || error instanceof ProjectStoreError) {
+          return { ok: false, code: error.code, message: error.message }
+        }
+        return { ok: false, code: 'EXPORT_ERROR', message: 'Could not export the blueprint.' }
+      }
+    })
+  }
+}
 
 function registerGenerationHandlers(service) {
   const handle = (channel, method, resultKey) => {
@@ -106,6 +115,7 @@ app.whenReady().then(() => {
   const store = createProjectStore({ directory: path.join(app.getPath('userData'), 'projects') })
   registerProjectHandlers(store)
   registerGenerationHandlers(createGenerationService({ store }))
+  registerExportHandlers(createExportService({ store, showSaveDialog: (window, options) => dialog.showSaveDialog(window, options) }))
   createWindow()
 
   app.on('activate', () => {

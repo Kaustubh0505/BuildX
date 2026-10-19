@@ -12,11 +12,14 @@
     "start": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
     "test:store": "node --test tests/project-store.test.cjs",
     "test:generation": "node --test tests/generation.test.cjs",
+    "test:exports": "node --test tests/exports.test.cjs",
     "test:smoke": "npm run build && node scripts/smoke-electron.cjs",
-    "test:workspace": "npm run build && node scripts/workspace-electron.cjs"
+    "test:workspace": "npm run build && node scripts/workspace-electron.cjs",
+    "test:export-ui": "npm run build && node scripts/export-electron.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
+    "pdfkit": "^0.20.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

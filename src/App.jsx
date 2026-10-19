@@ -178,6 +178,7 @@ export default function App() {
   const [view, setView] = useState('brief')
   const [apiKey, setApiKey] = useState('')
   const [hasApiKey, setHasApiKey] = useState(false)
+  const [exportNotice, setExportNotice] = useState('')
   const operationRef = useRef(false)
   const focusNewTitleRef = useRef(false)
   const titleInputRef = useRef(null)
@@ -274,6 +275,7 @@ export default function App() {
       const result = requireSuccess(await window.buildx.projects.create({}))
       focusNewTitleRef.current = true
       setSelectedProject(result.project)
+      setExportNotice('')
       setView('brief')
       setDraft(projectToDraft(result.project))
       setSectionDrafts(projectToSections(result.project))
@@ -287,6 +289,7 @@ export default function App() {
     afterUnsavedChanges(() => runOperation('opening', async () => {
       const result = requireSuccess(await window.buildx.projects.get(id))
       setSelectedProject(result.project)
+      setExportNotice('')
       setView('brief')
       setDraft(projectToDraft(result.project))
       setSectionDrafts(projectToSections(result.project))
@@ -338,6 +341,7 @@ export default function App() {
       onConfirm: () => runOperation('deleting', async () => {
         requireSuccess(await window.buildx.projects.delete(selectedProject.id))
         setSelectedProject(null)
+        setExportNotice('')
         setDraft(EMPTY_DRAFT)
         setSectionDrafts(EMPTY_SECTIONS)
         setAttemptedSave(false)
@@ -353,11 +357,25 @@ export default function App() {
   }
 
   function updateDraft(key, value) {
+    setExportNotice('')
     setDraft((current) => ({ ...current, [key]: value }))
   }
 
   function updateSection(key, value) {
+    setExportNotice('')
     setSectionDrafts((current) => ({ ...current, [key]: value }))
+  }
+
+  function exportBlueprint(format) {
+    if (!selectedProject?.blueprint || hasUnsavedChanges || operationRef.current) return
+    setExportNotice('')
+    runOperation(`exporting ${format}`, async () => {
+      const result = requireSuccess(await window.buildx.exports[format](selectedProject.id))
+      if (!result.canceled) {
+        const fileName = result.filePath.split(/[\\/]/).pop()
+        setExportNotice(`Saved ${fileName}`)
+      }
+    })
   }
 
   function saveSection(key) {
@@ -403,6 +421,7 @@ export default function App() {
     runOperation('generating', async () => {
       const result = requireSuccess(await window.buildx.generation.generate(selectedProject.id))
       setSelectedProject(result.project)
+      setExportNotice('')
       setSectionDrafts(projectToSections(result.project))
       setView('blueprint')
       await refreshProjects()
@@ -593,6 +612,16 @@ export default function App() {
                     <h1>{selectedProject.blueprint ? 'Your plan is ready.' : 'Generate your plan.'}</h1>
                     <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Edit and save each section below.` : 'Save your brief, add a Gemini API key, then generate a structured plan.'}</p>
                   </div>
+                  {selectedProject.blueprint && <div className="export-toolbar">
+                    <div>
+                      <strong>Export saved blueprint</strong>
+                      <p>{hasUnsavedChanges ? 'Save your changes before exporting.' : exportNotice || 'Markdown and A4 PDF use the saved sections.'}</p>
+                    </div>
+                    <div className="export-actions">
+                      <button type="button" className="button button-quiet" onClick={() => exportBlueprint('markdown')} disabled={Boolean(operation) || hasUnsavedChanges}>Export Markdown</button>
+                      <button type="button" className="button button-quiet" onClick={() => exportBlueprint('pdf')} disabled={Boolean(operation) || hasUnsavedChanges}>Export PDF</button>
+                    </div>
+                  </div>}
                   <section className={`generation-card${selectedProject.blueprint ? ' has-blueprint' : ''}`} aria-labelledby="generation-title">
                     <div className="generation-heading">
                       <div>

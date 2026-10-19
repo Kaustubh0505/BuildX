@@ -1,6 +1,6 @@
 # BuildX
 
-BuildX is an Electron desktop workspace for implementation blueprints. You can create and manage local projects, generate a nine-section blueprint with your Gemini API key, then edit and save each section. Markdown and PDF exports are planned for a later milestone.
+BuildX is an Electron desktop workspace for implementation blueprints. You can create and manage local projects, generate a nine-section blueprint with your Gemini API key, edit and save each section, and export the saved blueprint as Markdown or A4 PDF.
 
 ## Run locally
 
@@ -41,4 +41,11 @@ Run the desktop project-workspace test with:
 npm run test:workspace
 ```
 
-The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Projects are versioned JSON files under Electron's `userData/projects` directory. The Gemini API key is held only in memory for the current app session. Export methods currently return `NOT_AVAILABLE_YET`.
+Run the export tests with:
+
+```sh
+npm run test:exports
+npm run test:export-ui
+```
+
+The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Projects are versioned JSON files under Electron's `userData/projects` directory. The Gemini API key is held only in memory for the current app session. Exports use Electron's native save dialog and the saved blueprint sections.
