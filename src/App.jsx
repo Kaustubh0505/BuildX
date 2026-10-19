@@ -2,6 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 
 const FIELD_KEYS = ['title', 'problem', 'desiredFeatures', 'constraints']
 const EMPTY_DRAFT = { title: '', problem: '', desiredFeatures: '', constraints: '' }
+const BLUEPRINT_SECTIONS = [
+  ['goalsAndAssumptions', 'Goals and assumptions'],
+  ['mvpFeatures', 'MVP features'],
+  ['userFlows', 'User flows'],
+  ['screens', 'Screens'],
+  ['architecture', 'React / Node architecture'],
+  ['dataEntities', 'Data entities'],
+  ['apiEndpoints', 'API endpoints'],
+  ['implementationPhases', 'Implementation phases'],
+  ['testPlan', 'Test plan'],
+]
 
 function projectToDraft(project) {
   return {
@@ -76,6 +87,7 @@ function ProjectDialog({ config, onCancel, onConfirm }) {
   const [name, setName] = useState(config.kind === 'rename' ? config.name : '')
   const isRename = config.kind === 'rename'
   const isDelete = config.kind === 'delete'
+  const isRegenerate = config.kind === 'regenerate'
 
   useEffect(() => {
     const element = dialogRef.current
@@ -88,13 +100,13 @@ function ProjectDialog({ config, onCancel, onConfirm }) {
     ? 'Rename project'
     : isDelete
       ? 'Delete project?'
-      : 'Discard unsaved changes?'
+      : isRegenerate ? 'Replace blueprint?' : 'Discard unsaved changes?'
   const description = isRename
     ? 'Choose a name that helps you find this project later.'
     : isDelete
       ? `"${config.name}" and its saved brief will be permanently deleted.`
-      : 'Your changes to this project brief have not been saved.'
-  const confirmLabel = isRename ? 'Save name' : isDelete ? 'Delete project' : 'Discard changes'
+      : isRegenerate ? 'Generating again will replace the saved blueprint and any section edits.' : 'Your changes to this project brief have not been saved.'
+  const confirmLabel = isRename ? 'Save name' : isDelete ? 'Delete project' : isRegenerate ? 'Replace blueprint' : 'Discard changes'
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -136,7 +148,7 @@ function ProjectDialog({ config, onCancel, onConfirm }) {
           </button>
           <button
             type="submit"
-            className={isDelete || !isRename ? 'button button-danger' : 'button button-primary'}
+            className={isDelete || config.kind === 'discard' ? 'button button-danger' : 'button button-primary'}
             disabled={isRename && !name.trim()}
           >
             {confirmLabel}
@@ -157,6 +169,9 @@ export default function App() {
   const [error, setError] = useState('')
   const [attemptedSave, setAttemptedSave] = useState(false)
   const [dialog, setDialog] = useState(null)
+  const [view, setView] = useState('brief')
+  const [apiKey, setApiKey] = useState('')
+  const [hasApiKey, setHasApiKey] = useState(false)
   const operationRef = useRef(false)
   const focusNewTitleRef = useRef(false)
   const titleInputRef = useRef(null)
@@ -182,6 +197,14 @@ export default function App() {
       .finally(() => {
         if (active) setIsLoading(false)
       })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    window.buildx.generation.status().then((result) => {
+      if (active && result?.ok) setHasApiKey(result.status.hasApiKey)
+    })
     return () => { active = false }
   }, [])
 
@@ -237,6 +260,7 @@ export default function App() {
       const result = requireSuccess(await window.buildx.projects.create({}))
       focusNewTitleRef.current = true
       setSelectedProject(result.project)
+      setView('brief')
       setDraft(projectToDraft(result.project))
       setAttemptedSave(false)
       await refreshProjects()
@@ -248,6 +272,7 @@ export default function App() {
     afterUnsavedChanges(() => runOperation('opening', async () => {
       const result = requireSuccess(await window.buildx.projects.get(id))
       setSelectedProject(result.project)
+      setView('brief')
       setDraft(projectToDraft(result.project))
       setAttemptedSave(false)
     }))
@@ -313,6 +338,49 @@ export default function App() {
     setDraft((current) => ({ ...current, [key]: value }))
   }
 
+  function saveApiKey(event) {
+    event.preventDefault()
+    runOperation('setting key', async () => {
+      const result = requireSuccess(await window.buildx.generation.setApiKey(apiKey))
+      setHasApiKey(result.status.hasApiKey)
+      setApiKey('')
+    })
+  }
+
+  function clearApiKey() {
+    runOperation('clearing key', async () => {
+      const result = requireSuccess(await window.buildx.generation.clearApiKey())
+      setHasApiKey(result.status.hasApiKey)
+      setApiKey('')
+    })
+  }
+
+  function generateBlueprint() {
+    if (!selectedProject || operationRef.current) return
+    if (selectedProject.blueprint) {
+      setDialog({ kind: 'regenerate', onConfirm: startGeneration })
+    } else {
+      startGeneration()
+    }
+  }
+
+  function startGeneration() {
+    runOperation('generating', async () => {
+      const result = requireSuccess(await window.buildx.generation.generate(selectedProject.id))
+      setSelectedProject(result.project)
+      setView('blueprint')
+      await refreshProjects()
+    })
+  }
+
+  function moveTab(event, nextView) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const target = event.key === 'Home' ? 'brief' : event.key === 'End' ? 'blueprint' : nextView
+    setView(target)
+    event.currentTarget.parentElement.querySelector(`#tab-${target}`)?.focus()
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Project navigation">
@@ -370,7 +438,7 @@ export default function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div className="workspace-heading">
-            <span>{selectedProject ? 'Project brief' : 'Workspace'}</span>
+            <span>{selectedProject ? (view === 'blueprint' ? 'Blueprint' : 'Project brief') : 'Workspace'}</span>
             {selectedProject && <span className="header-project-name">{projectName(selectedProject)}</span>}
           </div>
           {selectedProject ? (
@@ -397,8 +465,13 @@ export default function App() {
 
         {selectedProject ? (
           <>
-            <div className="editor-scroll">
+            <div className="workspace-tabs" role="tablist" aria-label="Project views">
+              <button id="tab-brief" type="button" role="tab" aria-controls="project-panel" aria-selected={view === 'brief'} tabIndex={view === 'brief' ? 0 : -1} className={view === 'brief' ? 'is-active' : ''} onClick={() => setView('brief')} onKeyDown={(event) => moveTab(event, 'blueprint')}>Brief</button>
+              <button id="tab-blueprint" type="button" role="tab" aria-controls="project-panel" aria-selected={view === 'blueprint'} tabIndex={view === 'blueprint' ? 0 : -1} className={view === 'blueprint' ? 'is-active' : ''} onClick={() => setView('blueprint')} onKeyDown={(event) => moveTab(event, 'brief')}>Blueprint</button>
+            </div>
+            <div id="project-panel" role="tabpanel" aria-labelledby={`tab-${view}`} className="editor-scroll">
               <div className="editor-content">
+                {view === 'brief' ? <>
                 <div className="editor-intro">
                   <p className="section-label">Project brief</p>
                   <h1>Define the idea.</h1>
@@ -467,9 +540,45 @@ export default function App() {
                     </div>
                   </fieldset>
                 </form>
+                </> : <>
+                  <div className="editor-intro">
+                    <p className="section-label">Implementation blueprint</p>
+                    <h1>{selectedProject.blueprint ? 'Your plan is ready.' : 'Generate your plan.'}</h1>
+                    <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Review the nine sections below.` : 'Save your brief, add a Gemini API key, then generate a structured plan.'}</p>
+                  </div>
+                  <section className="generation-card" aria-labelledby="generation-title">
+                    <div className="generation-heading">
+                      <div>
+                        <h2 id="generation-title">Gemini generation</h2>
+                        <p>Your key stays in this app session and is never saved with a project.</p>
+                      </div>
+                      <span className={`key-status${hasApiKey ? ' is-ready' : ''}`}>{hasApiKey ? 'Key ready' : 'Key needed'}</span>
+                    </div>
+                    <form className="api-key-form" onSubmit={saveApiKey}>
+                      <label htmlFor="gemini-api-key">Gemini API key</label>
+                      <div className="api-key-controls">
+                        <input id="gemini-api-key" type="password" autoComplete="off" spellCheck="false" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={hasApiKey ? 'Enter a new key to replace it' : 'Enter your API key'} disabled={Boolean(operation)} />
+                        <button type="submit" className="button button-quiet" disabled={Boolean(operation) || !apiKey.trim()}>Use key</button>
+                        {hasApiKey && <button type="button" className="button button-quiet" onClick={clearApiKey} disabled={Boolean(operation)}>Remove key</button>}
+                      </div>
+                    </form>
+                    <div className="generation-actions">
+                      <p>{isDirty ? 'Save your brief before generating.' : !selectedProject.title.trim() || !selectedProject.input.problem.trim() ? 'Add a title and problem in the brief, then save.' : !hasApiKey ? 'Add a Gemini API key to continue.' : 'Uses your saved brief and may take a moment.'}</p>
+                      <button type="button" className="button button-primary" onClick={generateBlueprint} disabled={Boolean(operation) || isDirty || !hasApiKey || !selectedProject.title.trim() || !selectedProject.input.problem.trim()}>{operation === 'generating' ? 'Generating…' : selectedProject.blueprint ? 'Generate again' : 'Generate blueprint'}</button>
+                    </div>
+                  </section>
+                  {selectedProject.blueprint ? (
+                    <div className="blueprint-sections">
+                      {BLUEPRINT_SECTIONS.map(([key, label], index) => <section className="blueprint-section" key={key} aria-labelledby={`section-${key}`}>
+                        <span className="blueprint-number">{String(index + 1).padStart(2, '0')}</span>
+                        <div><h2 id={`section-${key}`}>{label}</h2><div className="blueprint-copy">{selectedProject.blueprint.sections[key]}</div></div>
+                      </section>)}
+                    </div>
+                  ) : <p className="blueprint-empty">Your generated blueprint will appear here.</p>}
+                </>}
               </div>
             </div>
-            <footer className="editor-footer">
+            {view === 'brief' && <footer className="editor-footer">
               <span className={`save-state${isDirty ? ' is-dirty' : ''}`} role="status" aria-live="polite">
                 <span className="save-state-dot" />
                 {operation === 'saving' ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved locally'}
@@ -482,7 +591,7 @@ export default function App() {
               >
                 Save project
               </button>
-            </footer>
+            </footer>}
           </>
         ) : (
           <section className="empty-state" aria-labelledby="empty-title">

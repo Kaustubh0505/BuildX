@@ -11,10 +11,12 @@
     "build": "vite build",
     "start": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
     "test:store": "node --test tests/project-store.test.cjs",
+    "test:generation": "node --test tests/generation.test.cjs",
     "test:smoke": "npm run build && node scripts/smoke-electron.cjs",
     "test:workspace": "npm run build && node scripts/workspace-electron.cjs"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

@@ -3,6 +3,7 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { _electron: electron } = require('playwright-core')
+const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
 
 const root = path.join(__dirname, '..')
 
@@ -46,6 +47,22 @@ async function main() {
     await page.getByText('Saved locally').waitFor()
     await page.getByRole('button', { name: 'Open First plan' }).waitFor()
 
+    await page.getByRole('tab', { name: 'Blueprint' }).click()
+    await page.getByRole('heading', { name: 'Generate your plan.' }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Generate blueprint' }).isDisabled(), true)
+    await page.locator('#gemini-api-key').fill('temporary-test-key')
+    assert.equal(await page.locator('#gemini-api-key').getAttribute('type'), 'password')
+    await page.getByRole('button', { name: 'Use key' }).click()
+    await page.getByText('Key ready').waitFor()
+    assert.equal(await page.locator('#gemini-api-key').inputValue(), '')
+    assert.equal(await page.getByRole('button', { name: 'Generate blueprint' }).isEnabled(), true)
+    await page.getByRole('button', { name: 'Remove key' }).click()
+    await page.getByText('Key needed').waitFor()
+    await page.locator('#gemini-api-key').fill('session-only-key')
+    await page.getByRole('button', { name: 'Use key' }).click()
+    await page.getByText('Key ready').waitFor()
+    await page.getByRole('tab', { name: 'Brief' }).click()
+
     if (process.env.BUILDX_SCREENSHOT_DIR) {
       await fs.mkdir(process.env.BUILDX_SCREENSHOT_DIR, { recursive: true })
       await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-workspace-desktop.png') })
@@ -88,11 +105,28 @@ async function main() {
     assert.equal(await page.locator('.project-item').count(), 1)
 
     await app.close()
+    const store = createProjectStore({ directory: path.join(dataDirectory, 'projects') })
+    const remaining = (await store.list()).projects[0]
+    await store.saveBlueprint(remaining.id, Object.fromEntries(SECTION_KEYS.map((key) => [key, `Saved ${key} content`])))
     app = await launch(dataDirectory)
     page = await app.firstWindow()
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('button', { name: 'Open Renamed second' }).click()
     await waitForField(page, '#project-problem', 'Help teams share availability.')
+    await page.getByRole('tab', { name: 'Blueprint' }).click()
+    await page.getByRole('heading', { name: 'Your plan is ready.' }).waitFor()
+    assert.equal(await page.locator('.blueprint-section').count(), 9)
+    await page.getByText('Saved testPlan content').waitFor()
+    await page.getByText('Key needed').waitFor()
+    await page.getByRole('tab', { name: 'Blueprint' }).focus()
+    await page.keyboard.press('ArrowLeft')
+    assert.equal(await page.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'), 'true')
+    await page.keyboard.press('ArrowRight')
+    assert.equal(await page.getByRole('tab', { name: 'Blueprint' }).getAttribute('aria-selected'), 'true')
+    if (process.env.BUILDX_SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-blueprint-desktop.png') })
+    }
+    await page.getByRole('tab', { name: 'Brief' }).click()
     await page.locator('#project-features').fill('Calendar sync')
     await page.keyboard.press('Meta+s')
     await page.getByText('Saved locally').waitFor()
@@ -118,7 +152,7 @@ async function main() {
       await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-workspace-compact-bottom.png') })
     }
     assert.deepEqual(pageErrors, [])
-    console.log('Workspace UI test passed: create, validate, save, reopen, discard, rename, delete, keyboard, resize.')
+    console.log('Workspace UI test passed: project actions, key handling, keyboard, resize.')
   } finally {
     if (app) await app.close().catch(() => {})
     await fs.rm(dataDirectory, { recursive: true, force: true })

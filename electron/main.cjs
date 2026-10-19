@@ -2,6 +2,7 @@ const path = require('node:path')
 const fs = require('node:fs')
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { createProjectStore, ProjectStoreError } = require('./project-store.cjs')
+const { createGenerationService, GenerationError } = require('./generation.cjs')
 
 app.setName('BuildX')
 
@@ -19,11 +20,28 @@ const unavailable = () => ({
   message: 'This feature is not available yet.',
 })
 
-ipcMain.handle('generation:set-api-key', unavailable)
-ipcMain.handle('generation:clear-api-key', unavailable)
-ipcMain.handle('generation:generate', unavailable)
 ipcMain.handle('exports:markdown', unavailable)
 ipcMain.handle('exports:pdf', unavailable)
+
+function registerGenerationHandlers(service) {
+  const handle = (channel, method, resultKey) => {
+    ipcMain.handle(channel, async (_event, ...args) => {
+      try {
+        const result = await service[method](...args)
+        return { ok: true, [resultKey]: result }
+      } catch (error) {
+        if (error instanceof GenerationError || error instanceof ProjectStoreError) {
+          return { ok: false, code: error.code, message: error.message }
+        }
+        return { ok: false, code: 'GENERATION_ERROR', message: 'Blueprint generation is unavailable.' }
+      }
+    })
+  }
+  handle('generation:status', 'status', 'status')
+  handle('generation:set-api-key', 'setApiKey', 'status')
+  handle('generation:clear-api-key', 'clearApiKey', 'status')
+  handle('generation:generate', 'generate', 'project')
+}
 
 function registerProjectHandlers(store) {
   const handle = (channel, method, resultKey) => {
@@ -87,6 +105,7 @@ function createWindow() {
 app.whenReady().then(() => {
   const store = createProjectStore({ directory: path.join(app.getPath('userData'), 'projects') })
   registerProjectHandlers(store)
+  registerGenerationHandlers(createGenerationService({ store }))
   createWindow()
 
   app.on('activate', () => {

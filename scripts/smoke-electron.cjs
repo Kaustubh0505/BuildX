@@ -32,7 +32,8 @@ async function main() {
       generationMethods: Object.keys(window.buildx.generation).sort(),
       exportMethods: Object.keys(window.buildx.exports).sort(),
       projectList: await window.buildx.projects.list(),
-      generationPlaceholder: await window.buildx.generation.generate('unused'),
+      generationStatus: await window.buildx.generation.status(),
+      generationWithoutKey: await window.buildx.generation.generate('unused'),
     }))
 
     assert.deepEqual(boundary.exposed, ['exports', 'generation', 'projects'])
@@ -42,12 +43,13 @@ async function main() {
     assert.deepEqual(boundary.projectMethods, [
       'create', 'delete', 'get', 'list', 'rename', 'saveInput', 'saveSection',
     ])
-    assert.deepEqual(boundary.generationMethods, ['clearApiKey', 'generate', 'setApiKey'])
+    assert.deepEqual(boundary.generationMethods, ['clearApiKey', 'generate', 'setApiKey', 'status'])
     assert.deepEqual(boundary.exportMethods, ['markdown', 'pdf'])
     assert.equal(boundary.projectList.ok, true)
     assert.ok(Array.isArray(boundary.projectList.projects))
     assert.ok(Array.isArray(boundary.projectList.warnings))
-    assert.equal(boundary.generationPlaceholder.code, 'NOT_AVAILABLE_YET')
+    assert.deepEqual(boundary.generationStatus, { ok: true, status: { hasApiKey: false } })
+    assert.equal(boundary.generationWithoutKey.code, 'MISSING_API_KEY')
 
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setSize(720, 560)
