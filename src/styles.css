@@ -256,12 +256,75 @@ h1 {
 .blueprint-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
 .blueprint-section h2 { margin: 0; color: #263d5e; font-size: 17px; letter-spacing: -.02em; }
 .blueprint-section-heading .save-state { flex: none; }
-.blueprint-editor { display: block; width: 100%; min-height: 130px; padding: 13px; border: 1px solid #cbd6e4; border-radius: 7px; background: #fff; color: #344a66; font-size: 13px; line-height: 1.65; resize: vertical; overflow-wrap: anywhere; }
-.blueprint-editor:hover:not(:disabled) { border-color: #9fb6d5; }
-.blueprint-editor:focus { border-color: #477fd3; outline: 3px solid rgba(71, 127, 211, .14); }
+.blueprint-editor-shell { overflow: hidden; border: 1px solid #cbd6e4; border-radius: 8px; background: #fff; }
+.blueprint-editor-shell:focus-within { border-color: #477fd3; box-shadow: 0 0 0 3px rgba(71, 127, 211, .14); }
+.editor-mode-switch { display: flex; align-items: center; gap: 2px; min-height: 37px; padding: 4px 8px; border-bottom: 1px solid #e6ecf4; background: #f8fafd; }
+.editor-mode-switch > span { margin: 0 auto 0 6px; color: #71839a; font-size: 11px; font-weight: 650; }
+.editor-mode-switch button { padding: 5px 9px; border: 0; border-radius: 5px; background: transparent; color: #738399; font-size: 11px; font-weight: 650; }
+.editor-mode-switch button.is-active { background: #e5eefb; color: #25549a; }
+.editor-mode-switch button:hover:not(.is-active) { background: #eef2f8; }
+.format-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid #e6ecf4; }
+.format-group { display: flex; align-items: center; gap: 3px; }
+.format-group + .format-group { padding-left: 7px; border-left: 1px solid #dfe7f1; }
+.format-tool { min-width: 30px; min-height: 29px; padding: 4px 7px; border: 0; border-radius: 5px; background: transparent; color: #546984; font-size: 12px; font-weight: 650; }
+.format-tool:hover:not(:disabled), .format-tool.is-active { background: #e9f0fc; color: #2457a2; }
+.format-tool:disabled { opacity: .45; }
+.blueprint-rich-editor { max-height: 560px; min-height: 148px; overflow: auto; }
+.blueprint-rich-editor .tiptap { min-height: 148px; padding: 19px 21px 24px; color: #334a67; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; outline: none; }
+.blueprint-rich-editor .tiptap > :first-child { margin-top: 0; }
+.blueprint-rich-editor .tiptap > :last-child { margin-bottom: 0; }
+.blueprint-rich-editor .tiptap p { margin: 0 0 11px; }
+.blueprint-rich-editor .tiptap h1, .blueprint-rich-editor .tiptap h2, .blueprint-rich-editor .tiptap h3, .blueprint-rich-editor .tiptap h4 { margin: 17px 0 7px; color: #213b5e; font-family: inherit; font-size: 16px; font-weight: 750; letter-spacing: -.02em; line-height: 1.35; }
+.blueprint-rich-editor .tiptap h1 { font-size: 20px; }
+.blueprint-rich-editor .tiptap h2 { font-size: 18px; }
+.blueprint-rich-editor .tiptap h4 { font-size: 14px; }
+.blueprint-rich-editor .tiptap strong { color: #203c62; font-weight: 750; }
+.blueprint-rich-editor .tiptap ul, .blueprint-rich-editor .tiptap ol { margin: 6px 0 14px; padding-left: 23px; }
+.blueprint-rich-editor .tiptap li { padding-left: 3px; margin: 4px 0; }
+.blueprint-rich-editor .tiptap li p { margin: 0; }
+.blueprint-rich-editor .tiptap blockquote { margin: 14px 0; padding: 4px 0 4px 15px; border-left: 3px solid #7fa8e4; color: #526a88; }
+.blueprint-rich-editor .tiptap code { padding: 2px 5px; border-radius: 4px; background: #edf2f8; color: #315682; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.blueprint-rich-editor .tiptap pre { overflow-x: auto; margin: 13px 0; padding: 13px 15px; border-radius: 6px; background: #192c49; color: #e8f1ff; }
+.blueprint-rich-editor .tiptap pre code { padding: 0; background: none; color: inherit; }
+.blueprint-rich-editor .tiptap a { color: #2865b9; text-decoration: underline; }
+.blueprint-rich-editor .tiptap table { width: 100%; margin: 14px 0; border-collapse: collapse; table-layout: fixed; }
+.blueprint-rich-editor .tiptap th, .blueprint-rich-editor .tiptap td { padding: 8px 9px; border: 1px solid #dae4f0; vertical-align: top; }
+.blueprint-rich-editor .tiptap th { background: #f1f5fb; color: #27476e; text-align: left; }
+.blueprint-rich-editor .tiptap ul[data-type='taskList'] { padding-left: 0; list-style: none; }
+.blueprint-rich-editor .tiptap ul[data-type='taskList'] li { display: flex; gap: 8px; }
+.blueprint-rich-editor .tiptap ul[data-type='taskList'] li label { flex: none; }
+.blueprint-source-editor { display: block; width: 100%; min-height: 180px; padding: 17px 19px; border: 0; background: #fff; color: #334a67; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; outline: none; overflow-wrap: anywhere; }
 .blueprint-section-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .blueprint-section-actions span { color: #8a98a9; font-size: 11px; }
 .blueprint-empty { margin: 24px 0; color: #7a8ba0; font-size: 13px; }
+
+.schema-canvas { position: relative; overflow: hidden; margin-bottom: 17px; padding: 18px; border: 1px solid #243e64; border-radius: 9px; background: #142849; color: #e6effb; }
+.schema-canvas::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(162, 194, 236, .065) 1px, transparent 1px), linear-gradient(90deg, rgba(162, 194, 236, .065) 1px, transparent 1px); background-size: 22px 22px; pointer-events: none; }
+.schema-canvas-header, .schema-entity-grid, .schema-canvas-empty, .schema-canvas-note { position: relative; }
+.schema-canvas-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.schema-canvas-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.schema-canvas-title strong { color: #fff; font-size: 13px; }
+.schema-canvas-title > span:last-child { color: #9db9dd; font-size: 11px; }
+.schema-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #78d8bc; box-shadow: 0 0 0 3px rgba(120, 216, 188, .14); }
+.schema-entity-count { flex: none; color: #a9c2e1; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.schema-entity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.schema-entity { min-width: 0; overflow: hidden; border: 1px solid #47648d; border-radius: 8px; background: #203a60; box-shadow: 0 8px 18px rgba(4, 16, 34, .12); }
+.schema-entity-heading { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-bottom: 1px solid #3a5579; }
+.schema-entity-icon { display: grid; place-items: center; flex: none; width: 33px; height: 33px; border-radius: 7px; background: #315782; color: #9fd2ee; }
+.schema-entity-heading span:not(.schema-entity-icon) { color: #a4c1e5; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.schema-entity h3 { margin: 2px 0 0; overflow-wrap: anywhere; color: #fff; font-size: 15px; font-weight: 700; line-height: 1.2; }
+.schema-field-list { padding: 4px 14px 8px; }
+.schema-field { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #365175; font-size: 11px; }
+.schema-field:last-child { border-bottom: 0; }
+.schema-field-name { min-width: 0; overflow-wrap: anywhere; color: #eaf3ff; font-weight: 650; }
+.schema-field-detail { max-width: 50%; overflow-wrap: anywhere; color: #a8c3e5; text-align: right; }
+.schema-more-fields, .schema-no-fields { display: block; margin: 10px 0 0; color: #acc5e3; font-size: 11px; }
+.schema-canvas-empty { display: flex; align-items: center; flex-direction: column; justify-content: center; min-height: 170px; padding: 10px 18px 18px; text-align: center; }
+.schema-empty-icon { display: grid; place-items: center; width: 43px; height: 43px; margin-bottom: 12px; border: 1px dashed #5b7da9; border-radius: 9px; color: #95bce9; }
+.schema-canvas-empty strong { color: #fff; font-size: 14px; }
+.schema-canvas-empty p { max-width: 270px; margin: 7px 0 0; color: #adc5e2; font-size: 11px; line-height: 1.55; }
+.schema-canvas-empty code { color: #cce4ff; }
+.schema-canvas-note { margin: 14px 0 0; color: #a9c2e1; font-size: 11px; }
 
 .editor-footer {
   display: flex;

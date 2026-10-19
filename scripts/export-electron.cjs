@@ -43,7 +43,7 @@ async function main() {
     const pdf = await fs.readFile(path.join(directory, 'test-blueprint.pdf'))
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-')
 
-    await page.locator('#blueprint-screens').fill('Not saved')
+    await page.locator('#blueprint-screens .tiptap').fill('Not saved')
     assert.equal(await page.getByRole('button', { name: 'Export Markdown' }).isDisabled(), true)
     assert.equal(await page.getByRole('button', { name: 'Export PDF' }).isDisabled(), true)
     assert.equal((await fs.readFile(path.join(directory, 'test-blueprint.md'), 'utf8')).includes('Not saved'), false)

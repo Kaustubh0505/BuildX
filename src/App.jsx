@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import BlueprintEditor from './BlueprintEditor.jsx'
+import SchemaCanvas from './SchemaCanvas.jsx'
 
 const FIELD_KEYS = ['title', 'problem', 'desiredFeatures', 'constraints']
 const EMPTY_DRAFT = { title: '', problem: '', desiredFeatures: '', constraints: '' }
@@ -645,18 +647,17 @@ export default function App() {
                             <h2 id={`section-${key}`}>{label}</h2>
                             <span className={`save-state${sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? ' is-dirty' : ''}`} role="status" aria-live="polite"><span className="save-state-dot" />{operation === `saving section:${key}` ? 'Saving…' : sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? 'Unsaved changes' : 'Saved locally'}</span>
                           </div>
-                          <textarea
-                            id={`blueprint-${key}`}
-                            className="blueprint-editor"
-                            aria-label={`${label} content`}
-                            data-section-key={key}
+                          {key === 'dataEntities' && <SchemaCanvas markdown={sectionDrafts[key] ?? ''} />}
+                          <BlueprintEditor
+                            key={`${selectedProject.id}-${selectedProject.blueprint.generatedAt}-${key}`}
+                            sectionKey={key}
+                            label={label}
                             value={sectionDrafts[key] ?? ''}
-                            onChange={(event) => updateSection(key, event.target.value)}
-                            rows={Math.max(5, Math.min(14, (sectionDrafts[key] ?? '').split('\n').length + 2))}
+                            onChange={(value) => updateSection(key, value)}
                             disabled={Boolean(operation)}
                           />
                           <div className="blueprint-section-actions">
-                            <span>Markdown text</span>
+                            <span>Formatted text is saved as Markdown</span>
                             <button type="button" className="button button-quiet" onClick={() => saveSection(key)} disabled={Boolean(operation) || sectionDrafts[key] === selectedProject.blueprint.sections[key]}>Save section</button>
                           </div>
                         </div>

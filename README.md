@@ -1,6 +1,6 @@
 # BuildX
 
-BuildX is an Electron desktop workspace for implementation blueprints. You can create and manage local projects, generate a nine-section blueprint with your Gemini API key, edit and save each section, and export the saved blueprint as Markdown or A4 PDF.
+BuildX is an Electron desktop workspace for implementation blueprints. You can create and manage local projects, generate a nine-section blueprint with your Gemini API key, edit and save each section, and export the saved blueprint as Markdown or A4 PDF. Blueprint sections open in a formatted editor with headings, emphasis, lists, code, and tables. Switch to Markdown when you want to edit the source directly. The Data entities section also shows a live entity-card view based on its headings and fields.
 
 ## Run locally
 
