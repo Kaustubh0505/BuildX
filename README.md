@@ -17,6 +17,15 @@ To launch the built renderer without Vite:
 npm start
 ```
 
+Build a locally runnable Apple Silicon `.app` with electron-builder:
+
+```sh
+npm run package:mac
+open release/mac-arm64/BuildX.app
+```
+
+The app is ad hoc signed for local use. It is not notarized for distribution.
+
 Run the Electron smoke test with:
 
 ```sh
@@ -47,5 +56,9 @@ Run the export tests with:
 npm run test:exports
 npm run test:export-ui
 ```
+
+After packaging, run `npm run test:package` to open the `.app` with disposable project data and verify storage, PDF export, and the preload boundary.
+
+To make one live Gemini request, set `GEMINI_API_KEY` in your shell and run `npm run test:live-gemini`. The test uses a temporary project and removes it afterward. The key is not printed or written to the project file.
 
 The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Projects are versioned JSON files under Electron's `userData/projects` directory. The Gemini API key is held only in memory for the current app session. Exports use Electron's native save dialog and the saved blueprint sections.

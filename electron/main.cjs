@@ -7,8 +7,8 @@ const { createExportService, ExportError } = require('./exports.cjs')
 
 app.setName('BuildX')
 
-// Let the desktop UI test use disposable project data without touching a user's files.
-if (!app.isPackaged && process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_USER_DATA) {
+// Let desktop tests use disposable project data without touching a user's files.
+if (process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_USER_DATA) {
   const directory = process.env.BUILDX_E2E_USER_DATA
   if (!path.isAbsolute(directory)) throw new Error('Test user data path must be absolute')
   fs.mkdirSync(directory, { recursive: true })
