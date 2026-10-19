@@ -1,5 +1,6 @@
 {
   "name": "buildx",
+  "productName": "BuildX",
   "version": "0.1.0",
   "private": true,
   "description": "A desktop workspace for implementation blueprints",
@@ -9,6 +10,7 @@
     "dev": "ELECTRON_RENDERER_URL=http://127.0.0.1:5173 concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && env -u ELECTRON_RUN_AS_NODE electron .\"",
     "build": "vite build",
     "start": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
+    "test:store": "node --test tests/project-store.test.cjs",
     "test:smoke": "npm run build && node scripts/smoke-electron.cjs"
   },
   "dependencies": {

@@ -1,5 +1,8 @@
 const path = require('node:path')
 const { app, BrowserWindow, ipcMain } = require('electron')
+const { createProjectStore, ProjectStoreError } = require('./project-store.cjs')
+
+app.setName('BuildX')
 
 const unavailable = () => ({
   ok: false,
@@ -7,20 +10,35 @@ const unavailable = () => ({
   message: 'This feature is not available yet.',
 })
 
-// Keep one explicit handler per public action. Later milestones will replace
-// these responses with validated project, generation, and export operations.
-ipcMain.handle('projects:list', unavailable)
-ipcMain.handle('projects:create', unavailable)
-ipcMain.handle('projects:get', unavailable)
-ipcMain.handle('projects:rename', unavailable)
-ipcMain.handle('projects:delete', unavailable)
-ipcMain.handle('projects:save-input', unavailable)
-ipcMain.handle('projects:save-section', unavailable)
 ipcMain.handle('generation:set-api-key', unavailable)
 ipcMain.handle('generation:clear-api-key', unavailable)
 ipcMain.handle('generation:generate', unavailable)
 ipcMain.handle('exports:markdown', unavailable)
 ipcMain.handle('exports:pdf', unavailable)
+
+function registerProjectHandlers(store) {
+  const handle = (channel, method, resultKey) => {
+    ipcMain.handle(channel, async (_event, ...args) => {
+      try {
+        const result = await store[method](...args)
+        return resultKey ? { ok: true, [resultKey]: result } : { ok: true, ...result }
+      } catch (error) {
+        if (error instanceof ProjectStoreError) {
+          return { ok: false, code: error.code, message: error.message }
+        }
+        return { ok: false, code: 'STORAGE_ERROR', message: 'Project storage is unavailable.' }
+      }
+    })
+  }
+
+  handle('projects:list', 'list')
+  handle('projects:create', 'create', 'project')
+  handle('projects:get', 'get', 'project')
+  handle('projects:rename', 'rename', 'project')
+  handle('projects:delete', 'delete', 'project')
+  handle('projects:save-input', 'saveInput', 'project')
+  handle('projects:save-section', 'saveSection', 'project')
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -58,6 +76,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const store = createProjectStore({ directory: path.join(app.getPath('userData'), 'projects') })
+  registerProjectHandlers(store)
   createWindow()
 
   app.on('activate', () => {

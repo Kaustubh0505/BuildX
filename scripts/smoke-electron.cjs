@@ -20,6 +20,8 @@ async function main() {
     await page.getByRole('heading', { name: 'Start with a clear plan.' }).waitFor()
     assert.equal(await page.title(), 'BuildX')
     assert.match(page.url(), /^file:\/\//)
+    const appDataPath = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'))
+    assert.equal(path.basename(appDataPath), 'BuildX')
 
     const boundary = await page.evaluate(async () => ({
       exposed: Object.keys(window.buildx).sort(),
@@ -29,7 +31,8 @@ async function main() {
       projectMethods: Object.keys(window.buildx.projects).sort(),
       generationMethods: Object.keys(window.buildx.generation).sort(),
       exportMethods: Object.keys(window.buildx.exports).sort(),
-      placeholder: await window.buildx.projects.list(),
+      projectList: await window.buildx.projects.list(),
+      generationPlaceholder: await window.buildx.generation.generate('unused'),
     }))
 
     assert.deepEqual(boundary.exposed, ['exports', 'generation', 'projects'])
@@ -41,7 +44,10 @@ async function main() {
     ])
     assert.deepEqual(boundary.generationMethods, ['clearApiKey', 'generate', 'setApiKey'])
     assert.deepEqual(boundary.exportMethods, ['markdown', 'pdf'])
-    assert.equal(boundary.placeholder.code, 'NOT_AVAILABLE_YET')
+    assert.equal(boundary.projectList.ok, true)
+    assert.ok(Array.isArray(boundary.projectList.projects))
+    assert.ok(Array.isArray(boundary.projectList.warnings))
+    assert.equal(boundary.generationPlaceholder.code, 'NOT_AVAILABLE_YET')
 
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setSize(720, 560)
@@ -57,7 +63,7 @@ async function main() {
     assert.ok(dimensions.scrollHeight <= dimensions.height, 'vertical overflow after resize')
     assert.deepEqual(pageErrors, [])
 
-    console.log('Electron smoke test passed: built launch, bridge boundary, IPC placeholder, resize.')
+    console.log('Electron smoke test passed: built launch, project IPC, bridge boundary, resize.')
   } finally {
     await app.close()
   }

@@ -1,6 +1,6 @@
 # BuildX
 
-BuildX is an Electron desktop workspace for implementation blueprints. Milestone 1 contains the application shell and a restricted preload API. Project management, Gemini generation, and exports are not implemented yet.
+BuildX is an Electron desktop workspace for implementation blueprints. The app shell and local project storage are implemented. The project management interface, Gemini generation, and exports are not implemented yet.
 
 ## Run locally
 
@@ -23,4 +23,10 @@ Run the Electron smoke test with:
 npm run test:smoke
 ```
 
-The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Every method currently returns `{ ok: false, code: 'NOT_AVAILABLE_YET', message: 'This feature is not available yet.' }`.
+Run the project storage tests with:
+
+```sh
+npm run test:store
+```
+
+The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Project methods now operate on versioned JSON files under Electron's `userData/projects` directory. Generation and export methods still return `NOT_AVAILABLE_YET`.
