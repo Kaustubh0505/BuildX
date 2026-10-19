@@ -1,6 +1,6 @@
 # BuildX
 
-BuildX is an Electron desktop workspace for implementation blueprints. The app shell and local project storage are implemented. The project management interface, Gemini generation, and exports are not implemented yet.
+BuildX is an Electron desktop workspace for implementation blueprints. You can create, open, rename, and delete local projects, and save each project's brief. Gemini generation and exports are not implemented yet.
 
 ## Run locally
 
@@ -29,4 +29,10 @@ Run the project storage tests with:
 npm run test:store
 ```
 
-The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Project methods now operate on versioned JSON files under Electron's `userData/projects` directory. Generation and export methods still return `NOT_AVAILABLE_YET`.
+Run the desktop project-workspace test with:
+
+```sh
+npm run test:workspace
+```
+
+The renderer receives `window.buildx` with named `projects`, `generation`, and `exports` methods. Projects are versioned JSON files under Electron's `userData/projects` directory. Generation and export methods still return `NOT_AVAILABLE_YET`.

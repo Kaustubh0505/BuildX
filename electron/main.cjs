@@ -1,8 +1,17 @@
 const path = require('node:path')
+const fs = require('node:fs')
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { createProjectStore, ProjectStoreError } = require('./project-store.cjs')
 
 app.setName('BuildX')
+
+// Let the desktop UI test use disposable project data without touching a user's files.
+if (!app.isPackaged && process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_USER_DATA) {
+  const directory = process.env.BUILDX_E2E_USER_DATA
+  if (!path.isAbsolute(directory)) throw new Error('Test user data path must be absolute')
+  fs.mkdirSync(directory, { recursive: true })
+  app.setPath('userData', directory)
+}
 
 const unavailable = () => ({
   ok: false,
