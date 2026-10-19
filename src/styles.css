@@ -225,24 +225,36 @@ h1 {
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .field-grid textarea { min-height: 126px; }
 .generation-card { padding: 22px; border: 1px solid #d6e1ef; border-radius: 10px; background: #fff; box-shadow: 0 5px 20px rgba(28, 56, 94, .04); }
+.generation-card.has-blueprint { padding: 17px 21px; }
 .generation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .generation-heading h2 { margin: 0; color: #233b5b; font-size: 17px; }
 .generation-heading p, .generation-actions p { margin: 7px 0 0; color: #73839a; font-size: 12px; line-height: 1.5; }
 .key-status { flex: none; padding: 6px 9px; border-radius: 5px; background: #f4e9df; color: #92623c; font-size: 11px; font-weight: 700; }
 .key-status.is-ready { background: #e2f1e8; color: #347055; }
 .api-key-form { margin-top: 21px; }
+.generation-settings { margin-top: 13px; color: #456891; font-size: 12px; }
+.generation-settings summary { width: fit-content; cursor: pointer; font-weight: 650; }
+.generation-settings .api-key-form { margin-top: 16px; }
 .api-key-form label { display: block; margin-bottom: 8px; color: #253a56; font-size: 13px; font-weight: 700; }
 .api-key-controls { display: flex; gap: 8px; }
 .api-key-controls input { min-width: 0; flex: 1; padding: 9px 12px; border: 1px solid #cbd6e4; border-radius: 7px; background: #fff; color: #1a2d48; font-size: 13px; }
 .api-key-controls input:focus { border-color: #477fd3; outline: 3px solid rgba(71, 127, 211, .14); }
 .generation-actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 23px; padding-top: 19px; border-top: 1px solid #e7ecf3; }
+.has-blueprint .generation-actions { margin-top: 14px; padding-top: 13px; }
 .generation-actions p { margin: 0; }
 .generation-actions button { flex: none; }
 .blueprint-sections { display: grid; gap: 13px; margin-top: 27px; }
 .blueprint-section { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 22px; border: 1px solid #e0e7ef; border-radius: 9px; background: #fff; }
 .blueprint-number { padding-top: 3px; color: #5e83ba; font-size: 12px; font-weight: 700; }
-.blueprint-section h2 { margin: 0 0 12px; color: #263d5e; font-size: 17px; letter-spacing: -.02em; }
-.blueprint-copy { color: #4f6076; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.blueprint-section-body { min-width: 0; }
+.blueprint-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.blueprint-section h2 { margin: 0; color: #263d5e; font-size: 17px; letter-spacing: -.02em; }
+.blueprint-section-heading .save-state { flex: none; }
+.blueprint-editor { display: block; width: 100%; min-height: 130px; padding: 13px; border: 1px solid #cbd6e4; border-radius: 7px; background: #fff; color: #344a66; font-size: 13px; line-height: 1.65; resize: vertical; overflow-wrap: anywhere; }
+.blueprint-editor:hover:not(:disabled) { border-color: #9fb6d5; }
+.blueprint-editor:focus { border-color: #477fd3; outline: 3px solid rgba(71, 127, 211, .14); }
+.blueprint-section-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.blueprint-section-actions span { color: #8a98a9; font-size: 11px; }
 .blueprint-empty { margin: 24px 0; color: #7a8ba0; font-size: 13px; }
 
 .editor-footer {
@@ -371,6 +383,7 @@ h1 {
   .system-banner { margin-left: 18px; margin-right: 18px; }
   .workspace-tabs { padding: 0 18px; }
   .api-key-controls, .generation-actions { flex-wrap: wrap; }
+  .blueprint-section-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
   .empty-state > p { font-size: 14px; }
 }
 

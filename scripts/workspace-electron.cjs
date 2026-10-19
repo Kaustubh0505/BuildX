@@ -126,6 +126,39 @@ async function main() {
     if (process.env.BUILDX_SCREENSHOT_DIR) {
       await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-blueprint-desktop.png') })
     }
+    await page.locator('#blueprint-goalsAndAssumptions').fill('Edited goals\n- Keep scope small')
+    await page.locator('#blueprint-screens').fill('Edited screens for booking')
+    await page.locator('#blueprint-goalsAndAssumptions').locator('..').getByRole('button', { name: 'Save section' }).click()
+    await page.locator('#blueprint-goalsAndAssumptions').locator('..').getByText('Saved locally').waitFor()
+    assert.equal(await page.locator('#blueprint-screens').inputValue(), 'Edited screens for booking')
+    await page.getByRole('button', { name: 'New project' }).click()
+    await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).waitFor()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    assert.equal(await page.locator('#blueprint-screens').inputValue(), 'Edited screens for booking')
+    await page.locator('#blueprint-screens').focus()
+    await page.keyboard.press('Meta+s')
+    await page.locator('#blueprint-screens').locator('..').getByText('Saved locally').waitFor()
+    const savedBlueprint = (await store.get(remaining.id)).blueprint
+    assert.equal(savedBlueprint.sections.goalsAndAssumptions, 'Edited goals\n- Keep scope small')
+    assert.equal(savedBlueprint.sections.screens, 'Edited screens for booking')
+    assert.equal(savedBlueprint.sections.testPlan, 'Saved testPlan content')
+
+    await app.close()
+    app = await launch(dataDirectory)
+    page = await app.firstWindow()
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await page.getByRole('button', { name: 'Open Renamed second' }).click()
+    await page.getByRole('tab', { name: 'Blueprint' }).click()
+    assert.equal(await page.locator('#blueprint-goalsAndAssumptions').inputValue(), 'Edited goals\n- Keep scope small')
+    assert.equal(await page.locator('#blueprint-screens').inputValue(), 'Edited screens for booking')
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(720, 560))
+    await page.locator('#blueprint-goalsAndAssumptions').scrollIntoViewIfNeeded()
+    const blueprintBounds = await page.locator('#blueprint-goalsAndAssumptions').boundingBox()
+    const blueprintViewport = await page.evaluate(() => document.documentElement.clientWidth)
+    assert.ok(blueprintBounds.x >= 0 && blueprintBounds.x + blueprintBounds.width <= blueprintViewport + 1, 'blueprint editor fits compact window')
+    if (process.env.BUILDX_SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-blueprint-compact.png') })
+    }
     await page.getByRole('tab', { name: 'Brief' }).click()
     await page.locator('#project-features').fill('Calendar sync')
     await page.keyboard.press('Meta+s')
@@ -152,7 +185,7 @@ async function main() {
       await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-workspace-compact-bottom.png') })
     }
     assert.deepEqual(pageErrors, [])
-    console.log('Workspace UI test passed: project actions, key handling, keyboard, resize.')
+    console.log('Workspace UI test passed: project actions, section edits and restart, key handling, keyboard, resize.')
   } finally {
     if (app) await app.close().catch(() => {})
     await fs.rm(dataDirectory, { recursive: true, force: true })

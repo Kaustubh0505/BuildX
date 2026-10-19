@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 const FIELD_KEYS = ['title', 'problem', 'desiredFeatures', 'constraints']
 const EMPTY_DRAFT = { title: '', problem: '', desiredFeatures: '', constraints: '' }
+const EMPTY_SECTIONS = {}
 const BLUEPRINT_SECTIONS = [
   ['goalsAndAssumptions', 'Goals and assumptions'],
   ['mvpFeatures', 'MVP features'],
@@ -21,6 +22,10 @@ function projectToDraft(project) {
     desiredFeatures: project.input.desiredFeatures,
     constraints: project.input.constraints,
   }
+}
+
+function projectToSections(project) {
+  return project.blueprint ? { ...project.blueprint.sections } : EMPTY_SECTIONS
 }
 
 function projectName(project) {
@@ -104,8 +109,8 @@ function ProjectDialog({ config, onCancel, onConfirm }) {
   const description = isRename
     ? 'Choose a name that helps you find this project later.'
     : isDelete
-      ? `"${config.name}" and its saved brief will be permanently deleted.`
-      : isRegenerate ? 'Generating again will replace the saved blueprint and any section edits.' : 'Your changes to this project brief have not been saved.'
+      ? `"${config.name}" and its saved brief and blueprint will be permanently deleted.`
+      : isRegenerate ? 'Generating again will replace the saved blueprint and any section edits, including unsaved changes.' : 'Your changes to this project have not been saved.'
   const confirmLabel = isRename ? 'Save name' : isDelete ? 'Delete project' : isRegenerate ? 'Replace blueprint' : 'Discard changes'
 
   function handleSubmit(event) {
@@ -164,6 +169,7 @@ export default function App() {
   const [warnings, setWarnings] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [draft, setDraft] = useState(EMPTY_DRAFT)
+  const [sectionDrafts, setSectionDrafts] = useState(EMPTY_SECTIONS)
   const [isLoading, setIsLoading] = useState(true)
   const [operation, setOperation] = useState(null)
   const [error, setError] = useState('')
@@ -179,6 +185,8 @@ export default function App() {
 
   const savedDraft = selectedProject ? projectToDraft(selectedProject) : EMPTY_DRAFT
   const isDirty = Boolean(selectedProject) && FIELD_KEYS.some((key) => draft[key] !== savedDraft[key])
+  const hasUnsavedSections = Boolean(selectedProject?.blueprint) && BLUEPRINT_SECTIONS.some(([key]) => sectionDrafts[key] !== selectedProject.blueprint.sections[key])
+  const hasUnsavedChanges = isDirty || hasUnsavedSections
   const titleMissing = attemptedSave && !draft.title.trim()
   const problemMissing = attemptedSave && !draft.problem.trim()
 
@@ -219,7 +227,13 @@ export default function App() {
     function handleKeyDown(event) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && selectedProject) {
         event.preventDefault()
-        if (!dialog && !operation) saveProject()
+        if (!dialog && !operation) {
+          if (view === 'brief') saveProject()
+          else {
+            const sectionKey = document.activeElement?.dataset.sectionKey
+            if (sectionKey) saveSection(sectionKey)
+          }
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -248,7 +262,7 @@ export default function App() {
   }
 
   function afterUnsavedChanges(action) {
-    if (isDirty) {
+    if (hasUnsavedChanges) {
       setDialog({ kind: 'discard', onConfirm: action })
     } else {
       action()
@@ -262,6 +276,7 @@ export default function App() {
       setSelectedProject(result.project)
       setView('brief')
       setDraft(projectToDraft(result.project))
+      setSectionDrafts(projectToSections(result.project))
       setAttemptedSave(false)
       await refreshProjects()
     }))
@@ -274,6 +289,7 @@ export default function App() {
       setSelectedProject(result.project)
       setView('brief')
       setDraft(projectToDraft(result.project))
+      setSectionDrafts(projectToSections(result.project))
       setAttemptedSave(false)
     }))
   }
@@ -307,6 +323,7 @@ export default function App() {
         const result = requireSuccess(await window.buildx.projects.rename(selectedProject.id, nextName))
         setSelectedProject(result.project)
         setDraft(projectToDraft(result.project))
+        setSectionDrafts(projectToSections(result.project))
         setAttemptedSave(false)
         await refreshProjects()
       }),
@@ -322,6 +339,7 @@ export default function App() {
         requireSuccess(await window.buildx.projects.delete(selectedProject.id))
         setSelectedProject(null)
         setDraft(EMPTY_DRAFT)
+        setSectionDrafts(EMPTY_SECTIONS)
         setAttemptedSave(false)
         await refreshProjects()
       }),
@@ -336,6 +354,23 @@ export default function App() {
 
   function updateDraft(key, value) {
     setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateSection(key, value) {
+    setSectionDrafts((current) => ({ ...current, [key]: value }))
+  }
+
+  function saveSection(key) {
+    if (!selectedProject?.blueprint || operationRef.current) return
+    if (!BLUEPRINT_SECTIONS.some(([sectionKey]) => sectionKey === key)) return
+    if (sectionDrafts[key] === selectedProject.blueprint.sections[key]) return
+    const content = sectionDrafts[key]
+    runOperation(`saving section:${key}`, async () => {
+      const result = requireSuccess(await window.buildx.projects.saveSection(selectedProject.id, key, content))
+      setSelectedProject(result.project)
+      setSectionDrafts((current) => ({ ...current, [key]: result.project.blueprint.sections[key] }))
+      await refreshProjects()
+    })
   }
 
   function saveApiKey(event) {
@@ -368,6 +403,7 @@ export default function App() {
     runOperation('generating', async () => {
       const result = requireSuccess(await window.buildx.generation.generate(selectedProject.id))
       setSelectedProject(result.project)
+      setSectionDrafts(projectToSections(result.project))
       setView('blueprint')
       await refreshProjects()
     })
@@ -379,6 +415,17 @@ export default function App() {
     const target = event.key === 'Home' ? 'brief' : event.key === 'End' ? 'blueprint' : nextView
     setView(target)
     event.currentTarget.parentElement.querySelector(`#tab-${target}`)?.focus()
+  }
+
+  function renderApiKeyForm() {
+    return <form className="api-key-form" onSubmit={saveApiKey}>
+      <label htmlFor="gemini-api-key">Gemini API key</label>
+      <div className="api-key-controls">
+        <input id="gemini-api-key" type="password" autoComplete="off" spellCheck="false" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={hasApiKey ? 'Enter a new key to replace it' : 'Enter your API key'} disabled={Boolean(operation)} />
+        <button type="submit" className="button button-quiet" disabled={Boolean(operation) || !apiKey.trim()}>Use key</button>
+        {hasApiKey && <button type="button" className="button button-quiet" onClick={clearApiKey} disabled={Boolean(operation)}>Remove key</button>}
+      </div>
+    </form>
   }
 
   return (
@@ -544,24 +591,17 @@ export default function App() {
                   <div className="editor-intro">
                     <p className="section-label">Implementation blueprint</p>
                     <h1>{selectedProject.blueprint ? 'Your plan is ready.' : 'Generate your plan.'}</h1>
-                    <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Review the nine sections below.` : 'Save your brief, add a Gemini API key, then generate a structured plan.'}</p>
+                    <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Edit and save each section below.` : 'Save your brief, add a Gemini API key, then generate a structured plan.'}</p>
                   </div>
-                  <section className="generation-card" aria-labelledby="generation-title">
+                  <section className={`generation-card${selectedProject.blueprint ? ' has-blueprint' : ''}`} aria-labelledby="generation-title">
                     <div className="generation-heading">
                       <div>
                         <h2 id="generation-title">Gemini generation</h2>
-                        <p>Your key stays in this app session and is never saved with a project.</p>
+                        <p>{selectedProject.blueprint ? 'Regenerate from the saved brief when you need a fresh plan.' : 'Your key stays in this app session and is never saved with a project.'}</p>
                       </div>
                       <span className={`key-status${hasApiKey ? ' is-ready' : ''}`}>{hasApiKey ? 'Key ready' : 'Key needed'}</span>
                     </div>
-                    <form className="api-key-form" onSubmit={saveApiKey}>
-                      <label htmlFor="gemini-api-key">Gemini API key</label>
-                      <div className="api-key-controls">
-                        <input id="gemini-api-key" type="password" autoComplete="off" spellCheck="false" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={hasApiKey ? 'Enter a new key to replace it' : 'Enter your API key'} disabled={Boolean(operation)} />
-                        <button type="submit" className="button button-quiet" disabled={Boolean(operation) || !apiKey.trim()}>Use key</button>
-                        {hasApiKey && <button type="button" className="button button-quiet" onClick={clearApiKey} disabled={Boolean(operation)}>Remove key</button>}
-                      </div>
-                    </form>
+                    {selectedProject.blueprint ? <details className="generation-settings"><summary>API key settings</summary>{renderApiKeyForm()}</details> : renderApiKeyForm()}
                     <div className="generation-actions">
                       <p>{isDirty ? 'Save your brief before generating.' : !selectedProject.title.trim() || !selectedProject.input.problem.trim() ? 'Add a title and problem in the brief, then save.' : !hasApiKey ? 'Add a Gemini API key to continue.' : 'Uses your saved brief and may take a moment.'}</p>
                       <button type="button" className="button button-primary" onClick={generateBlueprint} disabled={Boolean(operation) || isDirty || !hasApiKey || !selectedProject.title.trim() || !selectedProject.input.problem.trim()}>{operation === 'generating' ? 'Generating…' : selectedProject.blueprint ? 'Generate again' : 'Generate blueprint'}</button>
@@ -571,7 +611,26 @@ export default function App() {
                     <div className="blueprint-sections">
                       {BLUEPRINT_SECTIONS.map(([key, label], index) => <section className="blueprint-section" key={key} aria-labelledby={`section-${key}`}>
                         <span className="blueprint-number">{String(index + 1).padStart(2, '0')}</span>
-                        <div><h2 id={`section-${key}`}>{label}</h2><div className="blueprint-copy">{selectedProject.blueprint.sections[key]}</div></div>
+                        <div className="blueprint-section-body">
+                          <div className="blueprint-section-heading">
+                            <h2 id={`section-${key}`}>{label}</h2>
+                            <span className={`save-state${sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? ' is-dirty' : ''}`} role="status" aria-live="polite"><span className="save-state-dot" />{operation === `saving section:${key}` ? 'Saving…' : sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? 'Unsaved changes' : 'Saved locally'}</span>
+                          </div>
+                          <textarea
+                            id={`blueprint-${key}`}
+                            className="blueprint-editor"
+                            aria-label={`${label} content`}
+                            data-section-key={key}
+                            value={sectionDrafts[key] ?? ''}
+                            onChange={(event) => updateSection(key, event.target.value)}
+                            rows={Math.max(5, Math.min(14, (sectionDrafts[key] ?? '').split('\n').length + 2))}
+                            disabled={Boolean(operation)}
+                          />
+                          <div className="blueprint-section-actions">
+                            <span>Markdown text</span>
+                            <button type="button" className="button button-quiet" onClick={() => saveSection(key)} disabled={Boolean(operation) || sectionDrafts[key] === selectedProject.blueprint.sections[key]}>Save section</button>
+                          </div>
+                        </div>
                       </section>)}
                     </div>
                   ) : <p className="blueprint-empty">Your generated blueprint will appear here.</p>}
