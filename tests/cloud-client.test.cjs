@@ -7,7 +7,7 @@ const crypto = require('node:crypto')
 const { startFixture } = require('../server/tests/support.cjs')
 const { createCloudClient, validateApiUrl } = require('../electron/cloud-client.cjs')
 const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
-const { createGenerationService } = require('../electron/generation.cjs')
+const { createGenerationService } = require('../server/generation.cjs')
 let fixture
 before(async () => { fixture = await startFixture({ rateLimits: false }) })
 after(async () => { await fixture?.close() })

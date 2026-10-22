@@ -23,9 +23,6 @@ contextBridge.exposeInMainWorld('buildx', {
       ipcRenderer.invoke('projects:save-section', id, section, content, version),
   },
   generation: {
-    status: () => ipcRenderer.invoke('generation:status'),
-    setApiKey: (key) => ipcRenderer.invoke('generation:set-api-key', key),
-    clearApiKey: () => ipcRenderer.invoke('generation:clear-api-key'),
     generate: (id, version) => ipcRenderer.invoke('generation:generate', id, version),
   },
   exports: {

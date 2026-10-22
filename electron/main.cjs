@@ -3,7 +3,6 @@ const fs = require('node:fs')
 const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron')
 const { ProjectStoreError } = require('./project-store.cjs')
 const { createCloudClient, CloudError } = require('./cloud-client.cjs')
-const { createGenerationService, GenerationError } = require('./generation.cjs')
 const { createExportService, ExportError } = require('./exports.cjs')
 
 app.setName('BuildX')
@@ -17,11 +16,9 @@ if (process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_USER_DATA) {
 }
 
 function registerCloudHandlers(cloud) {
-  const generation = createGenerationService({ store: null })
   let activeOperations = 0
   let authBusy = false
   const notifyExpired = () => {
-    generation.clearApiKey()
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:expired')
   }
   const trusted = (event) => {
@@ -33,7 +30,7 @@ function registerCloudHandlers(cloud) {
   }
   const failure = (error) => {
     if (error.code === 'AUTH_REQUIRED') notifyExpired()
-    if ([CloudError, ProjectStoreError, GenerationError, ExportError].some((Type) => error instanceof Type)) return { ok: false, code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) }
+    if ([CloudError, ProjectStoreError, ExportError].some((Type) => error instanceof Type)) return { ok: false, code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) }
     return { ok: false, code: 'ACTION_FAILED', message: 'Could not complete this action. Please try again.' }
   }
   const handle = (channel, action, resultKey, authenticated = true) => {
@@ -55,7 +52,6 @@ function registerCloudHandlers(cloud) {
       authBusy = true
       try {
         const result = await cloud[method](...args)
-        if (method === 'logout') generation.clearApiKey()
         return { ok: true, ...result }
       } catch (error) { return failure(error) } finally { authBusy = false }
     })
@@ -67,14 +63,7 @@ function registerCloudHandlers(cloud) {
   ]) handle(`projects:${channel}`, async (_event, ...args) => {
     return cloud.scope().store[method](...args)
   }, key)
-  for (const method of ['status', 'setApiKey', 'clearApiKey']) {
-    const channel = { status: 'status', setApiKey: 'set-api-key', clearApiKey: 'clear-api-key' }[method]
-    handle(`generation:${channel}`, async (_event, ...args) => { await cloud.status(); return generation[method](...args) }, 'status')
-  }
-  handle('generation:generate', (_event, id, version) => {
-    if (!Number.isSafeInteger(version) || version < 1) throw new CloudError('INVALID_INPUT', 'Reload the project before generating.')
-    return generation.generate(id, version, cloud.scope().store)
-  }, 'project')
+  handle('generation:generate', (_event, id, version) => cloud.scope().store.generate(id, version), 'project')
   for (const format of ['markdown', 'pdf']) handle(`exports:${format}`, (event, id) => {
     const service = createExportService({ store: cloud.scope().store, showSaveDialog: (window, options) => dialog.showSaveDialog(window, options) })
     return service[format](id, BrowserWindow.fromWebContents(event.sender))

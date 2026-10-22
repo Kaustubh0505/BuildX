@@ -4,8 +4,8 @@ const path = require('node:path')
 const os = require('node:os')
 const fs = require('node:fs/promises')
 
-async function createDesktopFixture() {
-  const api = await startFixture({ rateLimits: false })
+async function createDesktopFixture(options = {}) {
+  const api = await startFixture({ rateLimits: false, ...options })
   const account = await api.account('developer@example.com', 'BuildX Developer')
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-cloud-fixture-'))
   const client = createCloudClient({ apiUrl: api.url, sessionFile: path.join(directory, 'session'), localDirectory: path.join(directory, 'projects'), secureStorage: null })

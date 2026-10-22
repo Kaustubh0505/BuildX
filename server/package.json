@@ -3,7 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "engines": { "node": ">=22" },
-  "scripts": { "start": "node --env-file-if-exists=.env index.cjs", "test": "node --test --test-concurrency=1 tests/*.test.cjs" },
-  "dependencies": { "bcrypt": "^6.0.0", "express": "^5.1.0", "helmet": "^8.1.0", "mongodb": "^6.20.0", "zod": "^4.1.0" }
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env index.cjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.cjs"
+  },
+  "dependencies": {
+    "@google/genai": "^2.30.0",
+    "bcrypt": "^6.0.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "mongodb": "^6.20.0",
+    "zod": "^4.1.0"
+  }
 }

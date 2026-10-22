@@ -107,8 +107,6 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
   const [attemptedSave, setAttemptedSave] = useState(false)
   const [dialog, setDialog] = useState(null)
   const [view, setView] = useState('brief')
-  const [apiKey, setApiKey] = useState('')
-  const [hasApiKey, setHasApiKey] = useState(false)
   const [exportNotice, setExportNotice] = useState('')
   const operationRef = useRef(false)
   const focusNewTitleRef = useRef(false)
@@ -142,15 +140,6 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
       .finally(() => {
         if (active) setIsLoading(false)
       })
-    return () => { active = false }
-  }, [sessionRevision])
-
-  useEffect(() => {
-    let active = true
-    setApiKey('')
-    window.buildx.generation.status().then((result) => {
-      if (active && result?.ok) setHasApiKey(result.status.hasApiKey)
-    }).catch(() => {})
     return () => { active = false }
   }, [sessionRevision])
 
@@ -333,23 +322,6 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
     })
   }
 
-  function saveApiKey(event) {
-    event.preventDefault()
-    runOperation('setting key', async () => {
-      const result = requireSuccess(await window.buildx.generation.setApiKey(apiKey))
-      setHasApiKey(result.status.hasApiKey)
-      setApiKey('')
-    })
-  }
-
-  function clearApiKey() {
-    runOperation('clearing key', async () => {
-      const result = requireSuccess(await window.buildx.generation.clearApiKey())
-      setHasApiKey(result.status.hasApiKey)
-      setApiKey('')
-    })
-  }
-
   function generateBlueprint() {
     if (!selectedProject || operationRef.current) return
     if (selectedProject.blueprint) {
@@ -395,17 +367,6 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
       setAttemptedSave(false)
       await refreshProjects()
     }))
-  }
-
-  function renderApiKeyForm() {
-    return <form className="api-key-form" onSubmit={saveApiKey}>
-      <label htmlFor="gemini-api-key">Gemini API key</label>
-      <div className="api-key-controls">
-        <input id="gemini-api-key" type="password" autoComplete="off" spellCheck="false" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={hasApiKey ? 'Enter a new key to replace it' : 'Enter your API key'} disabled={Boolean(operation)} />
-        <button type="submit" className="button button-quiet" disabled={Boolean(operation) || !apiKey.trim()}>Use key</button>
-        {hasApiKey && <button type="button" className="button button-quiet" onClick={clearApiKey} disabled={Boolean(operation)}>Remove key</button>}
-      </div>
-    </form>
   }
 
   return (
@@ -570,7 +531,7 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
                   <div className="editor-intro">
                     <p className="section-label">Implementation blueprint</p>
                     <h1>{selectedProject.blueprint ? 'Your plan is ready.' : 'Generate your plan.'}</h1>
-                    <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Edit and save each section below.` : 'Save your brief, add a Gemini API key, then generate a structured plan.'}</p>
+                    <p>{selectedProject.blueprint ? `Generated ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selectedProject.blueprint.generatedAt))}. Edit and save each section below.` : 'Save your brief, then generate a structured plan.'}</p>
                   </div>
                   {selectedProject.blueprint && <div className="export-toolbar">
                     <div>
@@ -582,20 +543,10 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
                       <button type="button" className="button button-quiet" onClick={() => exportBlueprint('pdf')} disabled={Boolean(operation) || hasUnsavedChanges}>Export PDF</button>
                     </div>
                   </div>}
-                  <section className={`generation-card${selectedProject.blueprint ? ' has-blueprint' : ''}`} aria-labelledby="generation-title">
-                    <div className="generation-heading">
-                      <div>
-                        <h2 id="generation-title">Gemini generation</h2>
-                        <p>{selectedProject.blueprint ? 'Regenerate from the saved brief when you need a fresh plan.' : 'Your key stays in this app session and is never saved with a project.'}</p>
-                      </div>
-                      <span className={`key-status${hasApiKey ? ' is-ready' : ''}`}>{hasApiKey ? 'Key ready' : 'Key needed'}</span>
-                    </div>
-                    {selectedProject.blueprint ? <details className="generation-settings"><summary>API key settings</summary>{renderApiKeyForm()}</details> : renderApiKeyForm()}
-                    <div className="generation-actions">
-                      <p>{isDirty ? 'Save your brief before generating.' : !selectedProject.title.trim() || !selectedProject.input.problem.trim() ? 'Add a title and problem in the brief, then save.' : !hasApiKey ? 'Add a Gemini API key to continue.' : 'Uses your saved brief and may take a moment.'}</p>
-                      <button type="button" className="button button-primary" onClick={generateBlueprint} disabled={Boolean(operation) || isDirty || !hasApiKey || !selectedProject.title.trim() || !selectedProject.input.problem.trim()}>{operation === 'generating' ? 'Generating…' : selectedProject.blueprint ? 'Generate again' : 'Generate blueprint'}</button>
-                    </div>
-                  </section>
+                  <div className="blueprint-generate-actions">
+                    <p>{isDirty ? 'Save your brief before generating.' : !selectedProject.title.trim() || !selectedProject.input.problem.trim() ? 'Add a title and problem in the brief, then save.' : 'Generate a plan from your saved brief.'}</p>
+                    <button type="button" className="button button-primary" onClick={generateBlueprint} disabled={Boolean(operation) || isDirty || !selectedProject.title.trim() || !selectedProject.input.problem.trim()}>{operation === 'generating' ? 'Generating…' : selectedProject.blueprint ? 'Generate again' : 'Generate blueprint'}</button>
+                  </div>
                   {selectedProject.blueprint ? (
                     <div className="blueprint-sections">
                       {BLUEPRINT_SECTIONS.map(([key, label], index) => <section className="blueprint-section" key={key} aria-labelledby={`section-${key}`}>

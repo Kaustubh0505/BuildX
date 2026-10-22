@@ -24,6 +24,7 @@ async function main() {
       require: typeof window.require, process: typeof window.process, ipcRenderer: typeof window.ipcRenderer,
       auth: await window.buildx.auth.status(),
       projects: Object.keys(window.buildx.projects).sort(),
+      generationMethods: Object.keys(window.buildx.generation),
       listing: await window.buildx.projects.list(),
     }))
     assert.deepEqual(boundary.exposed, ['auth', 'exports', 'generation', 'projects'])
@@ -31,6 +32,7 @@ async function main() {
     assert.equal(boundary.auth.user.email, fixture.account.email)
     assert.equal(boundary.auth.token, undefined)
     assert.deepEqual(boundary.projects, ['create', 'delete', 'get', 'list', 'rename', 'saveInput', 'saveSection'])
+    assert.deepEqual(boundary.generationMethods, ['generate'])
     assert.equal(boundary.listing.ok, true)
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(720, 560))
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight), true)

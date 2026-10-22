@@ -97,14 +97,14 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
     })()
     await initializing
   }
-  async function request(route, { method = 'GET', body, session, expectedEpoch } = {}) {
+  async function request(route, { method = 'GET', body, session, expectedEpoch, timeoutMs = 15000 } = {}) {
     if (expectedEpoch !== undefined && expectedEpoch !== epoch) throw new CloudError('ACCOUNT_CHANGED', 'Account changed. Try again from your current workspace.')
     let response, result
     try {
       response = await fetchImpl(`${baseUrl}${route}`, {
         method, headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session}` } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(15000), redirect: 'error',
+        signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
       })
       result = await response.json()
     } catch { throw new CloudError('CONNECTION_FAILED', connectionMessage) }
@@ -147,6 +147,7 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
       delete: async (id, version) => (await call(projectRoute(id), { method: 'DELETE', body: withVersion(version) })).project,
       saveInput: async (id, input, version) => (await call(`${projectRoute(id)}/input`, { method: 'PATCH', body: withVersion(version, input) })).project,
       saveSection: async (id, section, content, version) => (await call(`${projectRoute(id)}/sections/${encodeURIComponent(section)}`, { method: 'PATCH', body: withVersion(version, { content }) })).project,
+      generate: async (id, version) => (await call(`${projectRoute(id)}/generate`, { method: 'POST', body: withVersion(version), timeoutMs: 150000 })).project,
       saveBlueprint: async (id, sections, version) => (await call(`${projectRoute(id)}/blueprint`, { method: 'PUT', body: withVersion(version, { sections }) })).project,
 
     }

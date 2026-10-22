@@ -1,4 +1,4 @@
-const { SECTION_KEYS, ProjectStoreError } = require('./project-store.cjs')
+const { SECTION_KEYS, ProjectStoreError } = require('../electron/project-store.cjs')
 
 const MODEL = 'gemini-3.8-flash'
 const RESPONSE_SCHEMA = {
@@ -51,11 +51,11 @@ function buildPrompt(project) {
   ].join('\n\n')
 }
 
-function createGenerationService({ store, createClient = async (apiKey) => {
+function createGenerationService({ store, apiKey: configuredKey = '', createClient = async (apiKey) => {
   const { GoogleGenAI } = await import('@google/genai')
-  return new GoogleGenAI({ apiKey })
+  return new GoogleGenAI({ apiKey, httpOptions: { timeout: 60000 } })
 } }) {
-  let apiKey = null
+  let apiKey = configuredKey.trim() || null
   const pending = new Set()
 
   return {
@@ -72,9 +72,10 @@ function createGenerationService({ store, createClient = async (apiKey) => {
       return { hasApiKey: false }
     },
     async generate(id, expectedVersion, scopedStore = store) {
-      if (!apiKey) throw new GenerationError('MISSING_API_KEY', 'Add your Gemini API key before generating.')
-      if (pending.has(id)) throw new GenerationError('GENERATION_IN_PROGRESS', 'This project is already generating a blueprint.')
-      pending.add(id)
+      if (!apiKey) throw new GenerationError('GENERATION_UNAVAILABLE', 'Blueprint generation is temporarily unavailable. Please try again later.')
+      const pendingId = `${scopedStore?.ownerId || 'local'}:${id}`
+      if (pending.has(pendingId)) throw new GenerationError('GENERATION_IN_PROGRESS', 'This project is already generating a blueprint.')
+      pending.add(pendingId)
       try {
         const project = await scopedStore.get(id)
         if (expectedVersion !== undefined && project.version !== expectedVersion) throw new ProjectStoreError('CONFLICT', 'This project changed on another device. Reload before generating.')
@@ -85,7 +86,7 @@ function createGenerationService({ store, createClient = async (apiKey) => {
         try {
           client = await createClient(apiKey)
         } catch {
-          throw new GenerationError('GEMINI_REQUEST_FAILED', 'Gemini request failed. Check your key, connection, and account limits, then try again.')
+          throw new GenerationError('GEMINI_REQUEST_FAILED', 'Blueprint generation failed. Please try again in a moment.')
         }
         let sections = null
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -101,7 +102,7 @@ function createGenerationService({ store, createClient = async (apiKey) => {
               },
             })
           } catch {
-            throw new GenerationError('GEMINI_REQUEST_FAILED', 'Gemini request failed. Check your key, connection, and account limits, then try again.')
+            throw new GenerationError('GEMINI_REQUEST_FAILED', 'Blueprint generation failed. Please try again in a moment.')
           }
           sections = parseSections(interaction?.output_text)
           if (sections) break
@@ -111,7 +112,7 @@ function createGenerationService({ store, createClient = async (apiKey) => {
         }
         return await scopedStore.saveBlueprint(id, sections, project.version)
       } finally {
-        pending.delete(id)
+        pending.delete(pendingId)
       }
     },
   }

@@ -3,6 +3,8 @@ const helmet = require('helmet')
 const bcrypt = require('bcrypt')
 const { z } = require('zod')
 const { randomUUID, randomBytes, createHash } = require('node:crypto')
+const { createGenerationService, GenerationError } = require('./generation.cjs')
+const { ProjectStoreError } = require('../electron/project-store.cjs')
 const { SECTION_KEYS } = require('../electron/project-store.cjs')
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000
@@ -43,11 +45,13 @@ function parse(schema, data) {
 const publicUser = (user) => ({ id: user._id, name: user.name, email: user.email })
 const publicProject = ({ _id, ownerId, ...project }) => project
 
-async function createApi({ db, now = () => new Date(), rateLimits = true }) {
+async function createApi({ db, now = () => new Date(), rateLimits = true, geminiApiKey = '', createGeminiClient }) {
   const users = db.collection('users')
   const sessions = db.collection('sessions')
   const projects = db.collection('projects')
   const attempts = db.collection('authAttempts')
+  const generationLocks = db.collection('generationLocks')
+  const generation = createGenerationService({ store: null, apiKey: geminiApiKey, ...(createGeminiClient ? { createClient: createGeminiClient } : {}) })
   await Promise.all([
     users.createIndex({ email: 1 }, { unique: true }),
     sessions.createIndex({ tokenHash: 1 }, { unique: true }),
@@ -55,6 +59,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true }) {
     projects.createIndex({ ownerId: 1, id: 1 }, { unique: true }),
     projects.createIndex({ ownerId: 1, updatedAt: -1 }),
     attempts.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    generationLocks.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
   ])
   const dummyHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12)
   const app = express()
@@ -166,6 +171,36 @@ async function createApi({ db, now = () => new Date(), rateLimits = true }) {
     if (await projects.findOne(filter, { projection: { _id: 1 } })) throw new ApiError(409, 'CONFLICT', 'This project changed on another device. Reload the saved copy before trying again.')
     throw new ApiError(404, 'NOT_FOUND', 'Project not found.')
   }
+  app.post('/api/projects/:id/generate', async (req, res) => {
+    const input = parse(z.object({ version }).strict(), req.body)
+    const owner = { ownerId: req.user._id, id: req.params.id }
+    const get = async () => {
+      const project = await projects.findOne(owner)
+      if (!project) throw new ApiError(404, 'NOT_FOUND', 'Project not found.')
+      return publicProject(project)
+    }
+    const existing = await get()
+    if (existing.version !== input.version) throw new ApiError(409, 'CONFLICT', 'This project changed on another device. Reload before generating.')
+    if (!existing.title.trim() || !existing.input.problem.trim()) throw new ApiError(400, 'INCOMPLETE_BRIEF', 'Save a project title and problem before generating.')
+    if (!generation.status().hasApiKey) throw new ApiError(503, 'GENERATION_UNAVAILABLE', 'Blueprint generation is temporarily unavailable. Please try again later.')
+    const lockId = `${req.user._id}:${req.params.id}`
+    const nonce = randomUUID()
+    try {
+      await generationLocks.findOneAndUpdate({ _id: lockId, expiresAt: { $lte: now() } }, { $set: { nonce, expiresAt: new Date(now().getTime() + 5 * 60 * 1000) } }, { upsert: true })
+    } catch (error) {
+      if (error.code === 11000) throw new ApiError(409, 'GENERATION_IN_PROGRESS', 'This project is already generating a blueprint.')
+      throw error
+    }
+    try {
+      await limit(`generation-user:${req.user._id}`, 10, 60 * 60 * 1000)
+      await limit(`generation-ip:${req.ip}`, 30, 60 * 60 * 1000)
+      const project = await generation.generate(req.params.id, input.version, {
+        ownerId: req.user._id, get,
+        saveBlueprint: async (_id, value) => mutate(req, { blueprint: { generatedAt: now().toISOString(), sections: value } }),
+      })
+      res.json({ ok: true, project })
+    } finally { await generationLocks.deleteOne({ _id: lockId, nonce }) }
+  })
   app.patch('/api/projects/:id/input', async (req, res) => {
     const { version: expected, ...body } = req.body || {}
     const input = parse(draft, body)
@@ -193,6 +228,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true }) {
   })
   app.use((_req, _res, next) => next(new ApiError(404, 'NOT_FOUND', 'Endpoint not found.')))
   app.use((error, _req, res, _next) => {
+    if (error instanceof GenerationError || error instanceof ProjectStoreError) return res.status(error.code === 'CONFLICT' ? 409 : error.code === 'INCOMPLETE_BRIEF' ? 400 : 502).json({ ok: false, code: error.code, message: error.message })
     if (error instanceof ApiError) return res.status(error.status).json({ ok: false, code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) })
     if (error.type === 'entity.too.large') return res.status(413).json({ ok: false, code: 'REQUEST_TOO_LARGE', message: 'This request is too large.' })
     if (error.type === 'entity.parse.failed') return res.status(400).json({ ok: false, code: 'INVALID_INPUT', message: 'Invalid JSON request.' })

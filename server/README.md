@@ -12,6 +12,7 @@ From the repository root:
 npm run server:install
 docker compose up -d mongo
 cp server/.env.example server/.env
+# Set GEMINI_API_KEY in server/.env for managed blueprint generation.
 npm run server:start
 ```
 
@@ -29,7 +30,7 @@ The desktop API address defaults to `http://127.0.0.1:3001` in `buildx.config.js
 ## MongoDB Atlas and production configuration
 
 1. Create an Atlas cluster and a database user limited to the BuildX database. Allow connections from the API host's outbound IP address.
-2. Set the API host's `MONGODB_URI` to the Atlas connection string and `MONGODB_DATABASE` to the database name. Keep credentials in the host's secret environment, outside source control and the desktop package.
+2. Set the API host's `MONGODB_URI` to the Atlas connection string and `MONGODB_DATABASE` to the database name. Keep database credentials and GEMINI_API_KEY in the host's secret environment, outside source control and the desktop package.
 3. Run `npm ci --prefix server` and `npm run server:start` from a checkout containing both `server/` and `electron/project-store.cjs` (the latter supplies the shared section names). Configure `HOST=0.0.0.0` if your hosting environment requires it.
 4. Put the API behind HTTPS. Set `TRUST_PROXY_HOPS` only to the exact number of trusted reverse proxies in your deployment; otherwise leave it unset so clients cannot spoof the IP used for throttling.
 5. Set the public HTTPS API origin in `buildx.config.json` before `npm run package:mac`. This origin is public configuration, never a MongoDB URI. `BUILDX_API_URL` can override it when launching from a shell. Redirects, embedded credentials, and URL paths are rejected.
@@ -51,6 +52,7 @@ All responses use `{ ok: true, ... }` or `{ ok: false, code, message, fields? }`
 | `GET /api/projects/:id` | Returns owned `project` |
 | `PATCH /api/projects/:id/input` | `{ title, problem, desiredFeatures, constraints, version }` |
 | `PATCH /api/projects/:id/title` | `{ title, version }` |
+| `POST /api/projects/:id/generate` | `{ version }`; generates with the server key and saves only a validated blueprint |
 | `PUT /api/projects/:id/blueprint` | `{ sections, version }`; server assigns `generatedAt` |
 | `PATCH /api/projects/:id/sections/:section` | `{ content, version }` |
 | `DELETE /api/projects/:id` | `{ version }` |
@@ -66,7 +68,7 @@ Every cloud project has a server-controlled owner and a `version` starting at 1.
 
 ## Desktop security and session behavior
 
-React receives only named preload methods. Tokens are held in the main process; saved tokens are encrypted with Electron `safeStorage` and written atomically with restrictive file permissions. If secure storage is unavailable, sign-in lasts for the running app session, with a visible explanation. Passwords are cleared from the form after success and never saved in projects or exports. Gemini keys stay in main-process memory and are cleared on logout or session expiry.
+React receives only named preload methods. Tokens are held in the main process; saved tokens are encrypted with Electron `safeStorage` and written atomically with restrictive file permissions. If secure storage is unavailable, sign-in lasts for the running app session, with a visible explanation. Passwords are cleared from the form after success and never saved in projects or exports. The managed Gemini key exists only in the API server environment. Electron exposes only the named generation.generate method and forwards authenticated generation requests; users never enter a key.
 
 Startup validates saved sessions through `/me`. Connection failures offer retry without discarding the encrypted token. Session expiry hides the workspace and retains drafts in memory for the same account to sign in again. Changing accounts or logging out prompts before discarding unsaved drafts. No project cache or offline write queue is created.
 
@@ -92,3 +94,5 @@ The desktop app connects to the API, and the API connects to MongoDB. Keep `npm 
 If a database password contains characters such as `@`, `#`, `/`, `?`, or `:`, percent-encode those characters in the URI credential fields (for example, `@` becomes `%40`). Use an Atlas **Database Access** user, not the Atlas website login. An authentication rejection requires correcting that database user's credentials; an IP allowlist failure requires updating Atlas **Network Access**.
 
 Use the exact existing database name, including letter casing, for `MONGODB_DATABASE`. MongoDB rejects creating a second database whose name differs from an existing one only by uppercase/lowercase letters.
+
+Managed generation uses Gemini 3.8 Flash through the server’s Google GenAI SDK. Responses must contain all nine sections, with one retry for malformed output. The server verifies project ownership and version, allows 10 generation attempts per user per hour and 30 per IP per hour, and holds a MongoDB lease per project to prevent duplicate work across server processes. Provider failures preserve the saved blueprint and never return SDK error details or credentials.

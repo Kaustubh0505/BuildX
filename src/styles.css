@@ -230,25 +230,9 @@ h1 {
 .export-actions { display: flex; flex: none; gap: 8px; }
 .export-actions .button { min-height: 34px; padding: 7px 11px; font-size: 12px; }
 .export-actions .button:disabled { opacity: .52; }
-.generation-card { padding: 22px; border: 1px solid #d6e1ef; border-radius: 10px; background: #fff; box-shadow: 0 5px 20px rgba(28, 56, 94, .04); }
-.generation-card.has-blueprint { padding: 17px 21px; }
-.generation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-.generation-heading h2 { margin: 0; color: #233b5b; font-size: 17px; }
-.generation-heading p, .generation-actions p { margin: 7px 0 0; color: #73839a; font-size: 12px; line-height: 1.5; }
-.key-status { flex: none; padding: 6px 9px; border-radius: 5px; background: #f4e9df; color: #92623c; font-size: 11px; font-weight: 700; }
-.key-status.is-ready { background: #e2f1e8; color: #347055; }
-.api-key-form { margin-top: 21px; }
-.generation-settings { margin-top: 13px; color: #456891; font-size: 12px; }
-.generation-settings summary { width: fit-content; cursor: pointer; font-weight: 650; }
-.generation-settings .api-key-form { margin-top: 16px; }
-.api-key-form label { display: block; margin-bottom: 8px; color: #253a56; font-size: 13px; font-weight: 700; }
-.api-key-controls { display: flex; gap: 8px; }
-.api-key-controls input { min-width: 0; flex: 1; padding: 9px 12px; border: 1px solid #cbd6e4; border-radius: 7px; background: #fff; color: #1a2d48; font-size: 13px; }
-.api-key-controls input:focus { border-color: #477fd3; outline: 3px solid rgba(71, 127, 211, .14); }
-.generation-actions { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 23px; padding-top: 19px; border-top: 1px solid #e7ecf3; }
-.has-blueprint .generation-actions { margin-top: 14px; padding-top: 13px; }
-.generation-actions p { margin: 0; }
-.generation-actions button { flex: none; }
+.blueprint-generate-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0 24px; }
+.blueprint-generate-actions p { margin: 0; color: #73839a; font-size: 12px; line-height: 1.5; }
+.blueprint-generate-actions .button { flex: none; }
 .blueprint-sections { display: grid; gap: 13px; margin-top: 27px; }
 .blueprint-section { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 22px; border: 1px solid #e0e7ef; border-radius: 9px; background: #fff; }
 .blueprint-number { padding-top: 3px; color: #5e83ba; font-size: 12px; font-weight: 700; }
@@ -451,7 +435,7 @@ h1 {
   .editor-footer { padding: 12px 18px; }
   .system-banner { margin-left: 18px; margin-right: 18px; }
   .workspace-tabs { padding: 0 18px; }
-  .api-key-controls, .generation-actions { flex-wrap: wrap; }
+  .blueprint-generate-actions { flex-wrap: wrap; }
   .export-toolbar { align-items: flex-start; flex-direction: column; }
   .export-actions { flex-wrap: wrap; }
   .blueprint-section-heading { align-items: flex-start; flex-direction: column; gap: 5px; }

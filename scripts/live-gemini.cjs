@@ -3,12 +3,12 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
-const { createGenerationService } = require('../electron/generation.cjs')
+const { createGenerationService } = require('../server/generation.cjs')
 
 async function main() {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+  const key = process.env.GEMINI_API_KEY
   if (!key) {
-    console.error('Set GEMINI_API_KEY or GOOGLE_API_KEY to run the live Gemini test.')
+    console.error('Set GEMINI_API_KEY to run the live Gemini test.')
     process.exitCode = 2
     return
   }

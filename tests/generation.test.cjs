@@ -4,7 +4,7 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
-const { createGenerationService, MODEL, parseSections } = require('../electron/generation.cjs')
+const { createGenerationService, MODEL, parseSections } = require('../server/generation.cjs')
 
 const validSections = Object.fromEntries(SECTION_KEYS.map((key) => [key, `Plan for ${key}`]))
 
@@ -67,10 +67,10 @@ test('two malformed responses preserve the previous blueprint', async (t) => {
 
 test('missing key, incomplete brief, and request failure do not change the project', async (t) => {
   const { project, store, service, calls } = await setup(t, [new Error('secret-test-key in SDK error')])
-  await assert.rejects(service.generate(project.id), { code: 'MISSING_API_KEY' })
+  await assert.rejects(service.generate(project.id), { code: 'GENERATION_UNAVAILABLE' })
   assert.throws(() => service.setApiKey('   '), { code: 'INVALID_API_KEY' })
   service.setApiKey('secret-test-key')
-  await assert.rejects(service.generate(project.id), { code: 'GEMINI_REQUEST_FAILED', message: /Gemini request failed/ })
+  await assert.rejects(service.generate(project.id), { code: 'GEMINI_REQUEST_FAILED', message: /Blueprint generation failed/ })
   assert.equal(calls.length, 2)
   assert.equal((await store.get(project.id)).blueprint, null)
   const empty = await store.create()

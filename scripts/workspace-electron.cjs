@@ -32,7 +32,12 @@ async function waitForField(page, selector, value) {
 async function main() {
   const dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-ui-'))
   let app
-  fixture = await createDesktopFixture()
+  fixture = await createDesktopFixture({
+    geminiApiKey: 'server-test-key',
+    createGeminiClient: async () => ({ interactions: { create: async () => ({
+      output_text: JSON.stringify(Object.fromEntries(SECTION_KEYS.map(key => [key, `Generated ${key} content`]))),
+    }) } }),
+  })
 
   try {
     app = await launch(dataDirectory)
@@ -55,18 +60,11 @@ async function main() {
 
     await page.getByRole('tab', { name: 'Blueprint' }).click()
     await page.getByRole('heading', { name: 'Generate your plan.' }).waitFor()
-    assert.equal(await page.getByRole('button', { name: 'Generate blueprint' }).isDisabled(), true)
-    await page.locator('#gemini-api-key').fill('temporary-test-key')
-    assert.equal(await page.locator('#gemini-api-key').getAttribute('type'), 'password')
-    await page.getByRole('button', { name: 'Use key' }).click()
-    await page.getByText('Key ready').waitFor()
-    assert.equal(await page.locator('#gemini-api-key').inputValue(), '')
     assert.equal(await page.getByRole('button', { name: 'Generate blueprint' }).isEnabled(), true)
-    await page.getByRole('button', { name: 'Remove key' }).click()
-    await page.getByText('Key needed').waitFor()
-    await page.locator('#gemini-api-key').fill('session-only-key')
-    await page.getByRole('button', { name: 'Use key' }).click()
-    await page.getByText('Key ready').waitFor()
+    assert.equal(await page.locator('#gemini-api-key').count(), 0)
+    await page.getByRole('button', { name: 'Generate blueprint' }).click()
+    await page.getByRole('button', { name: 'Generate again' }).waitFor()
+    await page.getByText('Generated goalsAndAssumptions content', { exact: true }).waitFor()
     await page.getByRole('tab', { name: 'Brief' }).click()
 
     if (process.env.BUILDX_SCREENSHOT_DIR) {
@@ -108,6 +106,7 @@ async function main() {
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await page.getByRole('button', { name: 'Delete project' }).click()
     await page.getByRole('heading', { name: 'Start with a clear plan.' }).waitFor()
+    await page.waitForFunction(() => document.querySelectorAll('.project-item').length === 1)
     assert.equal(await page.locator('.project-item').count(), 1)
 
     await app.close()
@@ -141,7 +140,6 @@ async function main() {
     assert.equal(await page.locator('#blueprint-dataEntities h3').innerText(), 'Member')
     await entitiesSection.getByRole('button', { name: 'Save section' }).click()
     await entitiesSection.getByText('Saved to cloud').waitFor()
-    await page.getByText('Key needed').waitFor()
     await page.getByRole('tab', { name: 'Blueprint' }).focus()
     await page.keyboard.press('ArrowLeft')
     assert.equal(await page.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'), 'true')
@@ -214,7 +212,7 @@ async function main() {
       await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-workspace-compact-bottom.png') })
     }
     assert.deepEqual(pageErrors, [])
-    console.log('Workspace UI test passed: project actions, section edits and restart, key handling, keyboard, resize.')
+    console.log('Workspace UI test passed: project actions, managed generation, section edits and restart, keyboard, resize.')
   } finally {
     if (app) await app.close().catch(() => {})
     await fixture.close()

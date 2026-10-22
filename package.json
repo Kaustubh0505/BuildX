@@ -27,7 +27,6 @@
     "test:auth-ui": "npm run build && node scripts/auth-electron.cjs"
   },
   "dependencies": {
-    "@google/genai": "^2.30.0",
     "@tiptap/extension-table": "^3.32.0",
     "@tiptap/extension-task-item": "^3.32.0",
     "@tiptap/extension-task-list": "^3.32.0",

@@ -120,7 +120,6 @@ async function main() {
     await page.getByRole('heading', { name: 'Start with a clear plan.' }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'Open Changed elsewhere' }).count(), 0)
     assert.equal((await page.evaluate((id) => window.buildx.exports.pdf(id), legacy.id)).code, 'NOT_FOUND')
-    await page.evaluate(() => window.buildx.generation.setApiKey('test-session-only-key'))
     const denied = await page.evaluate((id) => window.buildx.generation.generate(id, 1), legacy.id)
     assert.equal(denied.code, 'NOT_FOUND')
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(720, 560))
