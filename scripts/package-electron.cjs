@@ -3,7 +3,9 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { _electron: electron } = require('playwright-core')
-const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
+const { SECTION_KEYS } = require('../electron/project-store.cjs')
+
+const { createDesktopFixture } = require('./cloud-fixture.cjs')
 
 const root = path.join(__dirname, '..')
 const bundle = path.join(root, 'release', 'mac-arm64', 'BuildX.app')
@@ -12,9 +14,11 @@ const executable = path.join(bundle, 'Contents', 'MacOS', 'BuildX')
 async function main() {
   await fs.access(executable)
   const dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-package-test-'))
+  const fixture = await createDesktopFixture()
   const environment = {
     ...process.env,
     ELECTRON_RENDERER_URL: '',
+    BUILDX_API_URL: fixture.url,
     BUILDX_E2E: '1',
     BUILDX_E2E_USER_DATA: dataDirectory,
   }
@@ -24,6 +28,7 @@ async function main() {
   try {
     packagedApp = await electron.launch({ executablePath: executable, args: [], env: environment })
     const page = await packagedApp.firstWindow()
+    await fixture.authenticate(page)
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('heading', { name: 'Start with a clear plan.' }).waitFor()
@@ -35,7 +40,7 @@ async function main() {
 
     const created = await page.evaluate(() => window.buildx.projects.create({ title: 'Packaged project', problem: 'Check packaged storage.' }))
     assert.equal(created.ok, true)
-    const store = createProjectStore({ directory: path.join(dataDirectory, 'projects') })
+    const store = fixture.store
     await store.saveBlueprint(created.project.id, Object.fromEntries(SECTION_KEYS.map((key) => [key, `Packaged ${key}`])))
     const loaded = await page.evaluate((id) => window.buildx.projects.get(id), created.project.id)
     assert.equal(loaded.ok, true)
@@ -55,11 +60,12 @@ async function main() {
       ipcRenderer: typeof window.ipcRenderer,
       api: Object.keys(window.buildx).sort(),
     }))
-    assert.deepEqual(boundary, { require: 'undefined', process: 'undefined', ipcRenderer: 'undefined', api: ['exports', 'generation', 'projects'] })
+    assert.deepEqual(boundary, { require: 'undefined', process: 'undefined', ipcRenderer: 'undefined', api: ['auth', 'exports', 'generation', 'projects'] })
     assert.deepEqual(pageErrors, [])
     console.log('Packaged .app test passed: launch, isolated storage, PDF export, preload boundary.')
   } finally {
     if (packagedApp) await packagedApp.close().catch(() => {})
+    await fixture.close()
     await fs.rm(dataDirectory, { recursive: true, force: true })
   }
 }

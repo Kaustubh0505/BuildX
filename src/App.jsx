@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import BlueprintEditor from './BlueprintEditor.jsx'
 import SchemaCanvas from './SchemaCanvas.jsx'
+import ProjectDialog from './ProjectDialog.jsx'
 
 const FIELD_KEYS = ['title', 'problem', 'desiredFeatures', 'constraints']
 const EMPTY_DRAFT = { title: '', problem: '', desiredFeatures: '', constraints: '' }
@@ -35,7 +36,11 @@ function projectName(project) {
 }
 
 function requireSuccess(result) {
-  if (!result?.ok) throw new Error(result?.message || 'The project action failed.')
+  if (!result?.ok) {
+    const error = new Error(result?.message || 'The project action failed.')
+    error.code = result?.code
+    throw error
+  }
   return result
 }
 
@@ -88,85 +93,7 @@ function DraftIllustration() {
   )
 }
 
-function ProjectDialog({ config, onCancel, onConfirm }) {
-  const dialogRef = useRef(null)
-  const initialFocusRef = useRef(null)
-  const [name, setName] = useState(config.kind === 'rename' ? config.name : '')
-  const isRename = config.kind === 'rename'
-  const isDelete = config.kind === 'delete'
-  const isRegenerate = config.kind === 'regenerate'
-
-  useEffect(() => {
-    const element = dialogRef.current
-    element.showModal()
-    initialFocusRef.current?.focus()
-    return () => element.close()
-  }, [])
-
-  const title = isRename
-    ? 'Rename project'
-    : isDelete
-      ? 'Delete project?'
-      : isRegenerate ? 'Replace blueprint?' : 'Discard unsaved changes?'
-  const description = isRename
-    ? 'Choose a name that helps you find this project later.'
-    : isDelete
-      ? `"${config.name}" and its saved brief and blueprint will be permanently deleted.`
-      : isRegenerate ? 'Generating again will replace the saved blueprint and any section edits, including unsaved changes.' : 'Your changes to this project have not been saved.'
-  const confirmLabel = isRename ? 'Save name' : isDelete ? 'Delete project' : isRegenerate ? 'Replace blueprint' : 'Discard changes'
-
-  function handleSubmit(event) {
-    event.preventDefault()
-    if (isRename && !name.trim()) return
-    onConfirm(isRename ? name.trim() : undefined)
-  }
-
-  return (
-    <dialog
-      ref={dialogRef}
-      className="project-dialog"
-      aria-labelledby="dialog-title"
-      aria-describedby="dialog-description"
-      onCancel={(event) => { event.preventDefault(); onCancel() }}
-    >
-      <form onSubmit={handleSubmit}>
-        <h2 id="dialog-title">{title}</h2>
-        <p id="dialog-description">{description}</p>
-        {isRename && (
-          <label className="dialog-field">
-            <span>Project name</span>
-            <input
-              ref={initialFocusRef}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={120}
-              required
-            />
-          </label>
-        )}
-        <div className="dialog-actions">
-          <button
-            ref={isRename ? null : initialFocusRef}
-            type="button"
-            className="button button-quiet"
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className={isDelete || config.kind === 'discard' ? 'button button-danger' : 'button button-primary'}
-            disabled={isRename && !name.trim()}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </form>
-    </dialog>
-  )
-}
-
-export default function App() {
+export default function App({ active, user, onLoggedOut, onDirtyChange, sessionRevision, accountNotice }) {
   const [projects, setProjects] = useState([])
   const [warnings, setWarnings] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
@@ -175,6 +102,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [operation, setOperation] = useState(null)
   const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
+  const retryRef = useRef(null)
   const [attemptedSave, setAttemptedSave] = useState(false)
   const [dialog, setDialog] = useState(null)
   const [view, setView] = useState('brief')
@@ -193,6 +122,8 @@ export default function App() {
   const titleMissing = attemptedSave && !draft.title.trim()
   const problemMissing = attemptedSave && !draft.problem.trim()
 
+  useEffect(() => { onDirtyChange(hasUnsavedChanges) }, [hasUnsavedChanges, onDirtyChange])
+
   useEffect(() => {
     let active = true
     window.buildx.projects.list()
@@ -203,21 +134,25 @@ export default function App() {
         setWarnings(listing.warnings)
       })
       .catch((loadError) => {
-        if (active) setError(loadError.message || 'Could not load projects.')
+        if (active) {
+          setError(loadError.message || 'Could not load projects.')
+          retryRef.current = { name: 'loading', action: refreshProjects }
+        }
       })
       .finally(() => {
         if (active) setIsLoading(false)
       })
     return () => { active = false }
-  }, [])
+  }, [sessionRevision])
 
   useEffect(() => {
     let active = true
+    setApiKey('')
     window.buildx.generation.status().then((result) => {
       if (active && result?.ok) setHasApiKey(result.status.hasApiKey)
-    })
+    }).catch(() => {})
     return () => { active = false }
-  }, [])
+  }, [sessionRevision])
 
   useEffect(() => {
     if (selectedProject && focusNewTitleRef.current) {
@@ -228,6 +163,7 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(event) {
+      if (!active) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && selectedProject) {
         event.preventDefault()
         if (!dialog && !operation) {
@@ -254,10 +190,14 @@ export default function App() {
     operationRef.current = true
     setOperation(name)
     setError('')
+    setConflict(false)
+    retryRef.current = null
     try {
       await action()
     } catch (actionError) {
       setError(actionError.message || 'The project action failed.')
+      setConflict(actionError.code === 'CONFLICT')
+      if (['CONNECTION_FAILED', 'SERVICE_UNAVAILABLE'].includes(actionError.code)) retryRef.current = { name, action }
     } finally {
       operationRef.current = false
       setOperation(null)
@@ -311,7 +251,7 @@ export default function App() {
       return
     }
     runOperation('saving', async () => {
-      const result = requireSuccess(await window.buildx.projects.saveInput(selectedProject.id, draft))
+      const result = requireSuccess(await window.buildx.projects.saveInput(selectedProject.id, draft, selectedProject.version))
       setSelectedProject(result.project)
       setDraft(projectToDraft(result.project))
       setAttemptedSave(false)
@@ -325,7 +265,7 @@ export default function App() {
       kind: 'rename',
       name: selectedProject.title,
       onConfirm: (nextName) => runOperation('renaming', async () => {
-        const result = requireSuccess(await window.buildx.projects.rename(selectedProject.id, nextName))
+        const result = requireSuccess(await window.buildx.projects.rename(selectedProject.id, nextName, selectedProject.version))
         setSelectedProject(result.project)
         setDraft(projectToDraft(result.project))
         setSectionDrafts(projectToSections(result.project))
@@ -341,7 +281,7 @@ export default function App() {
       kind: 'delete',
       name: projectName(selectedProject),
       onConfirm: () => runOperation('deleting', async () => {
-        requireSuccess(await window.buildx.projects.delete(selectedProject.id))
+        requireSuccess(await window.buildx.projects.delete(selectedProject.id, selectedProject.version))
         setSelectedProject(null)
         setExportNotice('')
         setDraft(EMPTY_DRAFT)
@@ -386,7 +326,7 @@ export default function App() {
     if (sectionDrafts[key] === selectedProject.blueprint.sections[key]) return
     const content = sectionDrafts[key]
     runOperation(`saving section:${key}`, async () => {
-      const result = requireSuccess(await window.buildx.projects.saveSection(selectedProject.id, key, content))
+      const result = requireSuccess(await window.buildx.projects.saveSection(selectedProject.id, key, content, selectedProject.version))
       setSelectedProject(result.project)
       setSectionDrafts((current) => ({ ...current, [key]: result.project.blueprint.sections[key] }))
       await refreshProjects()
@@ -421,7 +361,7 @@ export default function App() {
 
   function startGeneration() {
     runOperation('generating', async () => {
-      const result = requireSuccess(await window.buildx.generation.generate(selectedProject.id))
+      const result = requireSuccess(await window.buildx.generation.generate(selectedProject.id, selectedProject.version))
       setSelectedProject(result.project)
       setExportNotice('')
       setSectionDrafts(projectToSections(result.project))
@@ -436,6 +376,25 @@ export default function App() {
     const target = event.key === 'Home' ? 'brief' : event.key === 'End' ? 'blueprint' : nextView
     setView(target)
     event.currentTarget.parentElement.querySelector(`#tab-${target}`)?.focus()
+  }
+
+  function logout() {
+    afterUnsavedChanges(() => runOperation('logging out', async () => {
+      const result = requireSuccess(await window.buildx.auth.logout())
+      onLoggedOut(result.warning)
+    }))
+  }
+
+  function reloadProject() {
+    if (!selectedProject) return
+    afterUnsavedChanges(() => runOperation('reloading', async () => {
+      const result = requireSuccess(await window.buildx.projects.get(selectedProject.id))
+      setSelectedProject(result.project)
+      setDraft(projectToDraft(result.project))
+      setSectionDrafts(projectToSections(result.project))
+      setAttemptedSave(false)
+      await refreshProjects()
+    }))
   }
 
   function renderApiKeyForm() {
@@ -497,10 +456,8 @@ export default function App() {
           )}
         </nav>
 
-        <div className="sidebar-footer">
-          <span className="footer-dot" />
-          Blueprint workspace
-        </div>
+        <div className="sidebar-account"><span className="account-avatar" aria-hidden="true">{[...user.name][0].toUpperCase()}</span><div><strong>{user.name}</strong><span>{user.email}</span></div><button type="button" onClick={logout} disabled={Boolean(operation)}>Log out</button></div>
+        <div className="sidebar-footer"><span className="footer-dot" />Cloud workspace<button type="button" onClick={() => runOperation('refreshing', refreshProjects)} disabled={Boolean(operation)} aria-label="Refresh projects">Refresh</button></div>
       </aside>
 
       <main className="workspace">
@@ -519,7 +476,8 @@ export default function App() {
           )}
         </header>
 
-        {error && <div className="system-banner error-banner" role="alert">{error}</div>}
+        {accountNotice && <div className="system-banner account-banner" role="status">{accountNotice}</div>}
+        {error && <div className="system-banner error-banner" role="alert"><span>{error}</span>{retryRef.current && <button type="button" className="banner-action" disabled={Boolean(operation)} onClick={() => { const retry = retryRef.current; if (retry) runOperation(retry.name, retry.action) }}>Retry</button>}{conflict && selectedProject && <button type="button" className="banner-action" onClick={reloadProject} disabled={Boolean(operation)}>Reload saved copy</button>}</div>}
         {warnings.length > 0 && (
           <details className="system-banner warning-banner">
             <summary>{warnings.length} project file{warnings.length === 1 ? '' : 's'} could not be opened. The files were left untouched.</summary>
@@ -645,7 +603,7 @@ export default function App() {
                         <div className="blueprint-section-body">
                           <div className="blueprint-section-heading">
                             <h2 id={`section-${key}`}>{label}</h2>
-                            <span className={`save-state${sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? ' is-dirty' : ''}`} role="status" aria-live="polite"><span className="save-state-dot" />{operation === `saving section:${key}` ? 'Saving…' : sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? 'Unsaved changes' : 'Saved locally'}</span>
+                            <span className={`save-state${sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? ' is-dirty' : ''}`} role="status" aria-live="polite"><span className="save-state-dot" />{operation === `saving section:${key}` ? 'Saving…' : sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? 'Unsaved changes' : 'Saved to cloud'}</span>
                           </div>
                           {key === 'dataEntities' && <SchemaCanvas markdown={sectionDrafts[key] ?? ''} />}
                           <BlueprintEditor
@@ -670,7 +628,7 @@ export default function App() {
             {view === 'brief' && <footer className="editor-footer">
               <span className={`save-state${isDirty ? ' is-dirty' : ''}`} role="status" aria-live="polite">
                 <span className="save-state-dot" />
-                {operation === 'saving' ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved locally'}
+                {operation === 'saving' ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved to cloud'}
               </span>
               <button
                 type="submit"

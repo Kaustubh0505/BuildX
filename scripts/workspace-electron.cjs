@@ -3,7 +3,10 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { _electron: electron } = require('playwright-core')
-const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
+const { SECTION_KEYS } = require('../electron/project-store.cjs')
+
+const { createDesktopFixture } = require('./cloud-fixture.cjs')
+let fixture
 
 const root = path.join(__dirname, '..')
 
@@ -11,6 +14,7 @@ async function launch(dataDirectory) {
   const environment = {
     ...process.env,
     ELECTRON_RENDERER_URL: '',
+    BUILDX_API_URL: fixture.url,
     BUILDX_E2E: '1',
     BUILDX_E2E_USER_DATA: dataDirectory,
   }
@@ -28,10 +32,12 @@ async function waitForField(page, selector, value) {
 async function main() {
   const dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-ui-'))
   let app
+  fixture = await createDesktopFixture()
 
   try {
     app = await launch(dataDirectory)
     let page = await app.firstWindow()
+    await fixture.authenticate(page)
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('heading', { name: 'Start with a clear plan.' }).waitFor()
@@ -44,7 +50,7 @@ async function main() {
     await page.locator('#project-features').fill('Search and booking')
     await page.locator('#project-constraints').fill('Work on macOS')
     await page.getByRole('button', { name: 'Save project' }).click()
-    await page.getByText('Saved locally').waitFor()
+    await page.getByText('Saved to cloud').waitFor()
     await page.getByRole('button', { name: 'Open First plan' }).waitFor()
 
     await page.getByRole('tab', { name: 'Blueprint' }).click()
@@ -74,7 +80,7 @@ async function main() {
     await page.getByText('Enter a project title.').waitFor()
     await page.locator('#project-title').fill('Second plan')
     await page.getByRole('button', { name: 'Save project' }).click()
-    await page.getByText('Saved locally').waitFor()
+    await page.getByText('Saved to cloud').waitFor()
     assert.equal(await page.locator('.project-item').count(), 2)
 
     await page.getByRole('button', { name: 'Open First plan' }).click()
@@ -105,7 +111,7 @@ async function main() {
     assert.equal(await page.locator('.project-item').count(), 1)
 
     await app.close()
-    const store = createProjectStore({ directory: path.join(dataDirectory, 'projects') })
+    const store = fixture.store
     const remaining = (await store.list()).projects[0]
     await store.saveBlueprint(remaining.id, Object.fromEntries(SECTION_KEYS.map((key) => [key,
       key === 'goalsAndAssumptions' ? '## Goals\n\n**Saved goal**\n\n- Keep scope small'
@@ -114,6 +120,7 @@ async function main() {
     ])))
     app = await launch(dataDirectory)
     page = await app.firstWindow()
+    await fixture.authenticate(page)
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('button', { name: 'Open Renamed second' }).click()
     await waitForField(page, '#project-problem', 'Help teams share availability.')
@@ -133,7 +140,7 @@ async function main() {
     await entitiesSection.getByRole('button', { name: 'Formatted', exact: true }).click()
     assert.equal(await page.locator('#blueprint-dataEntities h3').innerText(), 'Member')
     await entitiesSection.getByRole('button', { name: 'Save section' }).click()
-    await entitiesSection.getByText('Saved locally').waitFor()
+    await entitiesSection.getByText('Saved to cloud').waitFor()
     await page.getByText('Key needed').waitFor()
     await page.getByRole('tab', { name: 'Blueprint' }).focus()
     await page.keyboard.press('ArrowLeft')
@@ -150,7 +157,7 @@ async function main() {
     await page.locator('#blueprint-goalsAndAssumptions .tiptap').press('Meta+B')
     await page.locator('#blueprint-screens .tiptap').fill('Edited screens for booking')
     await page.locator('#blueprint-goalsAndAssumptions').locator('..').locator('..').getByRole('button', { name: 'Save section' }).click()
-    await page.locator('#blueprint-goalsAndAssumptions').locator('..').locator('..').getByText('Saved locally').waitFor()
+    await page.locator('#blueprint-goalsAndAssumptions').locator('..').locator('..').getByText('Saved to cloud').waitFor()
     assert.equal(await page.locator('#blueprint-screens .tiptap').innerText(), 'Edited screens for booking')
     await page.getByRole('button', { name: 'New project' }).click()
     await page.getByRole('dialog', { name: 'Discard unsaved changes?' }).waitFor()
@@ -158,7 +165,7 @@ async function main() {
     assert.equal(await page.locator('#blueprint-screens .tiptap').innerText(), 'Edited screens for booking')
     await page.locator('#blueprint-screens .tiptap').focus()
     await page.keyboard.press('Meta+s')
-    await page.locator('#blueprint-screens').locator('..').locator('..').getByText('Saved locally').waitFor()
+    await page.locator('#blueprint-screens').locator('..').locator('..').getByText('Saved to cloud').waitFor()
     const savedBlueprint = (await store.get(remaining.id)).blueprint
     assert.equal(savedBlueprint.sections.goalsAndAssumptions.trim(), '## **Edited goals**')
     assert.equal(savedBlueprint.sections.screens, 'Edited screens for booking')
@@ -167,6 +174,7 @@ async function main() {
     await app.close()
     app = await launch(dataDirectory)
     page = await app.firstWindow()
+    await fixture.authenticate(page)
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('button', { name: 'Open Renamed second' }).click()
     await page.getByRole('tab', { name: 'Blueprint' }).click()
@@ -183,7 +191,7 @@ async function main() {
     await page.getByRole('tab', { name: 'Brief' }).click()
     await page.locator('#project-features').fill('Calendar sync')
     await page.keyboard.press('Meta+s')
-    await page.getByText('Saved locally').waitFor()
+    await page.getByText('Saved to cloud').waitFor()
 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(720, 560))
     const dimensions = await page.evaluate(() => ({
@@ -209,6 +217,7 @@ async function main() {
     console.log('Workspace UI test passed: project actions, section edits and restart, key handling, keyboard, resize.')
   } finally {
     if (app) await app.close().catch(() => {})
+    await fixture.close()
     await fs.rm(dataDirectory, { recursive: true, force: true })
   }
 }

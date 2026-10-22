@@ -1,7 +1,8 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
-const { createProjectStore, ProjectStoreError } = require('./project-store.cjs')
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron')
+const { ProjectStoreError } = require('./project-store.cjs')
+const { createCloudClient, CloudError } = require('./cloud-client.cjs')
 const { createGenerationService, GenerationError } = require('./generation.cjs')
 const { createExportService, ExportError } = require('./exports.cjs')
 
@@ -15,65 +16,69 @@ if (process.env.BUILDX_E2E === '1' && process.env.BUILDX_E2E_USER_DATA) {
   app.setPath('userData', directory)
 }
 
-function registerExportHandlers(service) {
-  for (const format of ['markdown', 'pdf']) {
-    ipcMain.handle(`exports:${format}`, async (event, id) => {
-      try {
-        const window = BrowserWindow.fromWebContents(event.sender)
-        const result = await service[format](id, window)
-        return { ok: true, ...result }
-      } catch (error) {
-        if (error instanceof ExportError || error instanceof ProjectStoreError) {
-          return { ok: false, code: error.code, message: error.message }
-        }
-        return { ok: false, code: 'EXPORT_ERROR', message: 'Could not export the blueprint.' }
-      }
-    })
+function registerCloudHandlers(cloud) {
+  const generation = createGenerationService({ store: null })
+  let activeOperations = 0
+  let authBusy = false
+  const notifyExpired = () => {
+    generation.clearApiKey()
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('auth:expired')
   }
-}
-
-function registerGenerationHandlers(service) {
-  const handle = (channel, method, resultKey) => {
-    ipcMain.handle(channel, async (_event, ...args) => {
-      try {
-        const result = await service[method](...args)
-        return { ok: true, [resultKey]: result }
-      } catch (error) {
-        if (error instanceof GenerationError || error instanceof ProjectStoreError) {
-          return { ok: false, code: error.code, message: error.message }
-        }
-        return { ok: false, code: 'GENERATION_ERROR', message: 'Blueprint generation is unavailable.' }
-      }
-    })
+  const trusted = (event) => {
+    const { pathToFileURL } = require('node:url')
+    const expected = process.env.ELECTRON_RENDERER_URL
+      ? new URL(process.env.ELECTRON_RENDERER_URL).href
+      : pathToFileURL(path.join(__dirname, '..', 'dist', 'renderer', 'index.html')).href
+    return event.senderFrame === event.sender.mainFrame && event.senderFrame.url === expected
   }
-  handle('generation:status', 'status', 'status')
-  handle('generation:set-api-key', 'setApiKey', 'status')
-  handle('generation:clear-api-key', 'clearApiKey', 'status')
-  handle('generation:generate', 'generate', 'project')
-}
-
-function registerProjectHandlers(store) {
-  const handle = (channel, method, resultKey) => {
-    ipcMain.handle(channel, async (_event, ...args) => {
+  const failure = (error) => {
+    if (error.code === 'AUTH_REQUIRED') notifyExpired()
+    if ([CloudError, ProjectStoreError, GenerationError, ExportError].some((Type) => error instanceof Type)) return { ok: false, code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) }
+    return { ok: false, code: 'ACTION_FAILED', message: 'Could not complete this action. Please try again.' }
+  }
+  const handle = (channel, action, resultKey, authenticated = true) => {
+    ipcMain.handle(channel, async (event, ...args) => {
+      if (!trusted(event)) return { ok: false, code: 'FORBIDDEN', message: 'Request not allowed.' }
+      if (authBusy) return { ok: false, code: 'BUSY', message: 'Wait for sign-in to finish.' }
+      activeOperations += 1
       try {
-        const result = await store[method](...args)
+        if (authenticated) await cloud.requireSession()
+        const result = await action(event, ...args)
         return resultKey ? { ok: true, [resultKey]: result } : { ok: true, ...result }
-      } catch (error) {
-        if (error instanceof ProjectStoreError) {
-          return { ok: false, code: error.code, message: error.message }
-        }
-        return { ok: false, code: 'STORAGE_ERROR', message: 'Project storage is unavailable.' }
-      }
+      } catch (error) { return failure(error) } finally { activeOperations -= 1 }
     })
   }
-
-  handle('projects:list', 'list')
-  handle('projects:create', 'create', 'project')
-  handle('projects:get', 'get', 'project')
-  handle('projects:rename', 'rename', 'project')
-  handle('projects:delete', 'delete', 'project')
-  handle('projects:save-input', 'saveInput', 'project')
-  handle('projects:save-section', 'saveSection', 'project')
+  for (const method of ['signup', 'login', 'logout', 'status']) {
+    ipcMain.handle(`auth:${method}`, async (event, ...args) => {
+      if (!trusted(event)) return { ok: false, code: 'FORBIDDEN', message: 'Request not allowed.' }
+      if (authBusy || activeOperations) return { ok: false, code: 'BUSY', message: 'Wait for the current action to finish.' }
+      authBusy = true
+      try {
+        const result = await cloud[method](...args)
+        if (method === 'logout') generation.clearApiKey()
+        return { ok: true, ...result }
+      } catch (error) { return failure(error) } finally { authBusy = false }
+    })
+  }
+  for (const [method, channel, key] of [
+    ['list', 'list', null], ['create', 'create', 'project'], ['get', 'get', 'project'],
+    ['rename', 'rename', 'project'], ['delete', 'delete', 'project'], ['saveInput', 'save-input', 'project'],
+    ['saveSection', 'save-section', 'project'],
+  ]) handle(`projects:${channel}`, async (_event, ...args) => {
+    return cloud.scope().store[method](...args)
+  }, key)
+  for (const method of ['status', 'setApiKey', 'clearApiKey']) {
+    const channel = { status: 'status', setApiKey: 'set-api-key', clearApiKey: 'clear-api-key' }[method]
+    handle(`generation:${channel}`, async (_event, ...args) => { await cloud.status(); return generation[method](...args) }, 'status')
+  }
+  handle('generation:generate', (_event, id, version) => {
+    if (!Number.isSafeInteger(version) || version < 1) throw new CloudError('INVALID_INPUT', 'Reload the project before generating.')
+    return generation.generate(id, version, cloud.scope().store)
+  }, 'project')
+  for (const format of ['markdown', 'pdf']) handle(`exports:${format}`, (event, id) => {
+    const service = createExportService({ store: cloud.scope().store, showSaveDialog: (window, options) => dialog.showSaveDialog(window, options) })
+    return service[format](id, BrowserWindow.fromWebContents(event.sender))
+  })
 }
 
 function createWindow() {
@@ -112,15 +117,22 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const store = createProjectStore({ directory: path.join(app.getPath('userData'), 'projects') })
-  registerProjectHandlers(store)
-  registerGenerationHandlers(createGenerationService({ store }))
-  registerExportHandlers(createExportService({ store, showSaveDialog: (window, options) => dialog.showSaveDialog(window, options) }))
+  const config = require('../buildx.config.json')
+  const cloud = createCloudClient({
+    apiUrl: process.env.BUILDX_API_URL || config.apiUrl,
+    sessionFile: path.join(app.getPath('userData'), 'auth-session.enc'),
+    secureStorage: safeStorage,
+    localDirectory: path.join(app.getPath('userData'), 'projects'),
+  })
+  registerCloudHandlers(cloud)
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+}).catch(() => {
+  dialog.showErrorBox('BuildX could not start', 'Check the BuildX API origin in buildx.config.json or BUILDX_API_URL. Use HTTPS, or HTTP on loopback for local development.')
+  app.quit()
 })
 
 app.on('window-all-closed', () => {

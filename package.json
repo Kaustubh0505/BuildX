@@ -19,7 +19,12 @@
     "test:live-gemini": "node scripts/live-gemini.cjs",
     "icon:mac": "node scripts/make-icon.cjs",
     "package:mac": "npm run build && electron-builder --mac dir --arm64",
-    "test:package": "node scripts/package-electron.cjs"
+    "test:package": "node scripts/package-electron.cjs",
+    "server:install": "npm install --prefix server",
+    "server:start": "npm start --prefix server",
+    "test:api": "npm test --prefix server",
+    "test:cloud": "node --test tests/cloud-client.test.cjs",
+    "test:auth-ui": "npm run build && node scripts/auth-electron.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
@@ -52,7 +57,8 @@
     "files": [
       "dist/renderer/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "buildx.config.json"
     ],
     "asar": true,
     "mac": {

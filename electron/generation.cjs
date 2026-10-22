@@ -71,12 +71,13 @@ function createGenerationService({ store, createClient = async (apiKey) => {
       apiKey = null
       return { hasApiKey: false }
     },
-    async generate(id) {
+    async generate(id, expectedVersion, scopedStore = store) {
       if (!apiKey) throw new GenerationError('MISSING_API_KEY', 'Add your Gemini API key before generating.')
       if (pending.has(id)) throw new GenerationError('GENERATION_IN_PROGRESS', 'This project is already generating a blueprint.')
       pending.add(id)
       try {
-        const project = await store.get(id)
+        const project = await scopedStore.get(id)
+        if (expectedVersion !== undefined && project.version !== expectedVersion) throw new ProjectStoreError('CONFLICT', 'This project changed on another device. Reload before generating.')
         if (!project.title.trim() || !project.input.problem.trim()) {
           throw new GenerationError('INCOMPLETE_BRIEF', 'Save a project title and problem before generating.')
         }
@@ -108,7 +109,7 @@ function createGenerationService({ store, createClient = async (apiKey) => {
         if (!sections) {
           throw new GenerationError('INVALID_RESPONSE', 'Gemini returned an incomplete blueprint twice. Your saved project was not changed.')
         }
-        return await store.saveBlueprint(id, sections)
+        return await scopedStore.saveBlueprint(id, sections, project.version)
       } finally {
         pending.delete(id)
       }

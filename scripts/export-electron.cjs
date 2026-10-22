@@ -3,15 +3,18 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { _electron: electron } = require('playwright-core')
-const { createProjectStore, SECTION_KEYS } = require('../electron/project-store.cjs')
+const { SECTION_KEYS } = require('../electron/project-store.cjs')
+
+const { createDesktopFixture } = require('./cloud-fixture.cjs')
 
 async function main() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-export-ui-'))
-  const store = createProjectStore({ directory: path.join(directory, 'projects') })
+  const fixture = await createDesktopFixture()
+  const store = fixture.store
   const project = await store.create({ title: 'Export test', problem: 'Check exported sections.' })
   await store.saveBlueprint(project.id, Object.fromEntries(SECTION_KEYS.map((key) => [key, `Saved ${key} content`])))
   await store.saveSection(project.id, 'screens', 'Edited screens content')
-  const environment = { ...process.env, ELECTRON_RENDERER_URL: '', BUILDX_E2E: '1', BUILDX_E2E_USER_DATA: directory }
+  const environment = { ...process.env, ELECTRON_RENDERER_URL: '', BUILDX_API_URL: fixture.url, BUILDX_E2E: '1', BUILDX_E2E_USER_DATA: directory }
   delete environment.ELECTRON_RUN_AS_NODE
   let app
 
@@ -24,6 +27,7 @@ async function main() {
       })
     }, directory)
     const page = await app.firstWindow()
+    await fixture.authenticate(page)
     const pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.getByRole('button', { name: 'Open Export test' }).click()
@@ -55,6 +59,7 @@ async function main() {
     console.log('Export UI test passed: Markdown/PDF through preload, saved content, unsaved edit guard.')
   } finally {
     if (app) await app.close().catch(() => {})
+    await fixture.close()
     await fs.rm(directory, { recursive: true, force: true })
   }
 }
