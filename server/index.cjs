@@ -1,6 +1,18 @@
+const path = require('node:path')
+const fs = require('node:fs')
 const { MongoClient } = require('mongodb')
 const { createApi } = require('./app.cjs')
 const { sectionKeysFromEnv } = require('./generation.cjs')
+
+// Ensure environment variables are loaded from server/.env if present
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    const envFile = path.join(__dirname, '.env')
+    if (fs.existsSync(envFile)) {
+      process.loadEnvFile(envFile)
+    }
+  }
+} catch (_) {}
 
 async function start() {
   if (!process.env.MONGODB_URI) throw new Error('Set MONGODB_URI in the server environment.')

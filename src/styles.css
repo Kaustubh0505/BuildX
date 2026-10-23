@@ -505,6 +505,12 @@ h1 {
 .auth-password input { padding-right: 61px; }
 .auth-password button { position: absolute; top: 0; right: 5px; min-height: 44px; padding: 0 9px; border: 0; background: transparent; color: #44648e; font-size: 11px; font-weight: 700; }
 .auth-submit { width: 100%; min-height: 44px; margin-top: 3px; }
+/* ── Google OAuth button ───────────────────────────────── */
+.button-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 44px; margin-top: 4px; padding: 0 16px; border: 1.5px solid #d2dbe8; border-radius: 8px; background: #fff; color: #203855; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.button-google:hover:not(:disabled) { background: #f4f7fc; border-color: #b2c4db; }
+.button-google:disabled { opacity: 0.55; cursor: not-allowed; }
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px; color: #9baab8; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #dce5ef; }
 .auth-notice, .auth-error { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #c9dfd5; border-radius: 7px; background: #edf6f0; color: #356348; font-size: 12px; line-height: 1.5; }
 .auth-error { border-color: #edcccc; background: #fff2f2; color: #923f3f; }
 .auth-footnote { margin: 24px 0 0; color: #7d8ca0; font-size: 12px; line-height: 1.5; }

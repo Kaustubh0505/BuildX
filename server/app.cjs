@@ -1,6 +1,7 @@
 const express = require('express')
 const helmet = require('helmet')
 const bcrypt = require('bcrypt')
+const { OAuth2Client } = require('google-auth-library')
 const { z } = require('zod')
 const { randomUUID, randomBytes, createHash } = require('node:crypto')
 const { createGenerationService, GenerationError } = require('./generation.cjs')
@@ -52,6 +53,9 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, groqAp
   const attempts = db.collection('authAttempts')
   const generationLocks = db.collection('generationLocks')
   const generation = createGenerationService({ store: null, apiKey: groqApiKey, sectionApiKeys: groqSectionKeys, ...(createGroqClient ? { createClient: createGroqClient } : {}) })
+  // Google OAuth — verify ID tokens issued to this app.
+  const googleClientId = process.env.GOOGLE_CLIENT_ID || ''
+  const googleAuthClient = googleClientId ? new OAuth2Client(googleClientId) : null
   await Promise.all([
     users.createIndex({ email: 1 }, { unique: true }),
     sessions.createIndex({ tokenHash: 1 }, { unique: true }),
@@ -131,6 +135,42 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, groqAp
   app.post('/api/auth/logout', auth, async (req, res) => {
     await sessions.deleteOne({ _id: req.session._id })
     res.json({ ok: true })
+  })
+  // ── Google OAuth ────────────────────────────────────────────────────────────
+  // Accepts the id_token from the Electron client (which already exchanged the
+  // authorization code with Google) and returns a BuildX session token.
+  app.post('/api/auth/google', async (req, res) => {
+    if (!googleAuthClient) throw new ApiError(503, 'GOOGLE_AUTH_UNAVAILABLE', 'Google sign-in is not configured on this server. Set GOOGLE_CLIENT_ID.')
+    await limit(`google-login-ip:${req.ip}`, 30, 15 * 60 * 1000)
+    const { idToken } = parse(z.object({ idToken: z.string().min(1) }).strict(), req.body)
+    // Verify the token signature and audience with Google's public keys.
+    let payload
+    try {
+      const ticket = await googleAuthClient.verifyIdToken({ idToken, audience: googleClientId })
+      payload = ticket.getPayload()
+    } catch {
+      throw new ApiError(401, 'INVALID_GOOGLE_TOKEN', 'Google sign-in failed. Please try again.')
+    }
+    if (!payload?.email_verified) throw new ApiError(401, 'GOOGLE_EMAIL_UNVERIFIED', 'Your Google account email is not verified.')
+    const email = payload.email.toLowerCase()
+    const googleId = payload.sub
+    const name = payload.name || payload.email.split('@')[0]
+    // Find an existing account by Google ID or email, or create a new one.
+    let user = await users.findOne({ $or: [{ googleId }, { email }] })
+    if (user) {
+      // Link the Google ID to an existing email-based account if not already linked.
+      if (!user.googleId) await users.updateOne({ _id: user._id }, { $set: { googleId, updatedAt: now() } })
+    } else {
+      // Create a new account for first-time Google sign-in.
+      const timestamp = now()
+      user = { _id: randomUUID(), name, email, googleId, passwordHash: null, passwordScheme: 'google-oauth', createdAt: timestamp, updatedAt: timestamp }
+      try { await users.insertOne(user) } catch (error) {
+        // Race: account was created between the findOne and insertOne — fetch it.
+        if (error.code === 11000) user = await users.findOne({ $or: [{ googleId }, { email }] })
+        else throw error
+      }
+    }
+    res.json({ ok: true, ...await startSession(user) })
   })
   app.use('/api/projects', auth)
   app.get('/api/projects', async (req, res) => {

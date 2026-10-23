@@ -1,9 +1,143 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } = require('electron')
+const { createServer } = require('node:http')
+const { URL } = require('node:url')
 const { ProjectStoreError } = require('./project-store.cjs')
 const { createCloudClient, CloudError } = require('./cloud-client.cjs')
 const { createExportService, ExportError } = require('./exports.cjs')
+
+// ─── Environment configuration ─────────────────────────────────────────────
+// Load environment variables from .env files (.env in workspace root, then server/.env)
+try {
+  const dotenv = require('dotenv')
+  dotenv.config({ path: path.join(__dirname, '..', '.env') })
+  dotenv.config({ path: path.join(__dirname, '..', 'server', '.env') })
+} catch (_) {
+  if (typeof process.loadEnvFile === 'function') {
+    for (const envPath of [path.join(__dirname, '..', '.env'), path.join(__dirname, '..', 'server', '.env')]) {
+      try { process.loadEnvFile(envPath) } catch (_) {}
+    }
+  }
+}
+
+// ─── Google OAuth helpers (Authorization Code + PKCE) ──────────────────────
+// Redirect URI — must be registered in Google Cloud Console as-is.
+const GOOGLE_REDIRECT_URI = 'http://127.0.0.1:42813/oauth/callback'
+
+function getGoogleCredentials() {
+  const config = (() => {
+    try { return require('../buildx.config.json') } catch { return {} }
+  })()
+  const clientId = process.env.GOOGLE_CLIENT_ID || config.googleClientId || ''
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || config.googleClientSecret || ''
+  return { clientId, clientSecret }
+}
+
+/**
+ * Generate a PKCE code_verifier and its SHA-256 code_challenge (base64url).
+ */
+function generatePKCE() {
+  const crypto = require('node:crypto')
+  const verifier = crypto.randomBytes(32).toString('base64url')
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url')
+  return { verifier, challenge }
+}
+
+/**
+ * Open the Google consent page in the user's default browser using the
+ * Authorization Code + PKCE flow, wait for the callback on a local HTTP
+ * server, then exchange the code for tokens at Google's token endpoint.
+ * Returns the `id_token` JWT string.
+ */
+function googleOAuthFlow() {
+  return new Promise((resolve, reject) => {
+    const { clientId, clientSecret } = getGoogleCredentials()
+    if (!clientId) {
+      return reject(new CloudError('MISSING_CONFIG', 'GOOGLE_CLIENT_ID is not configured. Add it to your .env file or environment.'))
+    }
+    if (!clientSecret) {
+      return reject(new CloudError('MISSING_CONFIG', 'GOOGLE_CLIENT_SECRET is not configured. Add it to your .env file or environment.'))
+    }
+
+    const crypto = require('node:crypto')
+    const { verifier, challenge } = generatePKCE()
+    const state = crypto.randomBytes(16).toString('hex')
+
+    // 1. Build the Authorization URL (response_type=code — the only type
+    //    Google still supports for desktop/native apps).
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+    authUrl.searchParams.set('client_id', clientId)
+    authUrl.searchParams.set('redirect_uri', GOOGLE_REDIRECT_URI)
+    authUrl.searchParams.set('response_type', 'code')
+    authUrl.searchParams.set('scope', 'openid email profile')
+    authUrl.searchParams.set('code_challenge', challenge)
+    authUrl.searchParams.set('code_challenge_method', 'S256')
+    authUrl.searchParams.set('state', state)
+    authUrl.searchParams.set('access_type', 'online')
+    authUrl.searchParams.set('prompt', 'select_account')
+
+    // 2. One-shot local HTTP server to receive the authorization code.
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://127.0.0.1')
+      if (url.pathname !== '/oauth/callback') { res.writeHead(404); res.end(); return }
+
+      const code = url.searchParams.get('code')
+      const returnedState = url.searchParams.get('state')
+      const errorParam = url.searchParams.get('error')
+
+      // Always respond to the browser first so it doesn't hang.
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`<!DOCTYPE html><html><head><title>BuildX</title>
+        <style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f7fa}
+        .card{text-align:center;padding:40px;border-radius:12px;background:#fff;box-shadow:0 2px 12px #0001;max-width:380px}
+        h2{margin:0 0 10px;color:#203855;font-size:22px}p{color:#5a6a7a;margin:0;font-size:14px}</style></head>
+        <body><div class="card"><h2>${errorParam ? '⚠ Sign-in failed' : '✓ Signed in!'}</h2>
+        <p>${errorParam ? 'An error occurred. You can close this tab.' : 'You are signed in to BuildX. You can close this tab.'}</p></div></body></html>`)
+      server.close()
+
+      if (errorParam) return reject(new CloudError('OAUTH_DENIED', `Google sign-in was cancelled or denied: ${errorParam}`))
+      if (returnedState !== state) return reject(new CloudError('OAUTH_STATE_MISMATCH', 'OAuth state mismatch. Please try signing in again.'))
+      if (!code) return reject(new CloudError('OAUTH_NO_CODE', 'Google did not return an authorization code.'))
+
+      // 3. Exchange the authorization code for tokens at Google's token endpoint.
+      try {
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: GOOGLE_REDIRECT_URI,
+            grant_type: 'authorization_code',
+            code_verifier: verifier,
+          }),
+          signal: AbortSignal.timeout(15000),
+        })
+        const tokens = await tokenRes.json()
+        if (!tokenRes.ok || !tokens.id_token) {
+          return reject(new CloudError('OAUTH_TOKEN_EXCHANGE_FAILED', tokens.error_description || 'Could not exchange the Google authorization code.'))
+        }
+        resolve(tokens.id_token)
+      } catch (err) {
+        reject(new CloudError('OAUTH_TOKEN_EXCHANGE_FAILED', `Token exchange failed: ${err.message}`))
+      }
+    })
+
+    server.listen(42813, '127.0.0.1', () => {
+      shell.openExternal(authUrl.toString())
+    })
+    server.on('error', (err) => reject(new CloudError('OAUTH_SERVER_ERROR', `Could not start the OAuth callback server: ${err.message}`)))
+
+    // Time out after 5 minutes if the user does not complete the flow.
+    const timeout = setTimeout(() => {
+      server.close()
+      reject(new CloudError('OAUTH_TIMEOUT', 'Google sign-in timed out. Please try again.'))
+    }, 5 * 60 * 1000)
+    server.on('close', () => clearTimeout(timeout))
+  })
+}
 
 app.setName('BuildX')
 
@@ -56,6 +190,19 @@ function registerCloudHandlers(cloud) {
       } catch (error) { return failure(error) } finally { authBusy = false }
     })
   }
+
+  // Google OAuth — opens the system browser, waits for the redirect, then
+  // exchanges the id_token with the BuildX backend.
+  ipcMain.handle('auth:google-login', async (event) => {
+    if (!trusted(event)) return { ok: false, code: 'FORBIDDEN', message: 'Request not allowed.' }
+    if (authBusy || activeOperations) return { ok: false, code: 'BUSY', message: 'Wait for the current action to finish.' }
+    authBusy = true
+    try {
+      const idToken = await googleOAuthFlow()
+      const result = await cloud.loginWithGoogle(idToken)
+      return { ok: true, ...result }
+    } catch (error) { return failure(error) } finally { authBusy = false }
+  })
   for (const [method, channel, key] of [
     ['list', 'list', null], ['create', 'create', 'project'], ['get', 'get', 'project'],
     ['rename', 'rename', 'project'], ['delete', 'delete', 'project'], ['saveInput', 'save-input', 'project'],

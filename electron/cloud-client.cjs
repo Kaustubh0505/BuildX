@@ -167,6 +167,13 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
   }
   return {
     requireSession, scope,
+    async loginWithGoogle(idToken) {
+      await initialize()
+      if (token) throw new CloudError('ALREADY_SIGNED_IN', 'Sign out before switching accounts.')
+      if (typeof idToken !== 'string' || !idToken) throw new CloudError('INVALID_INPUT', 'Missing Google ID token.')
+      const result = await request('/api/auth/google', { method: 'POST', body: { idToken } })
+      return rememberSession(result)
+    },
     async status() {
       await initialize()
       if (!token) return { user: null }

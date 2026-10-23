@@ -4,6 +4,17 @@ import LoadingOverlay, { LoadingSpinner } from './LoadingIndicator.jsx'
 
 const Workspace = lazy(() => import('./App.jsx'))
 
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#4285F4" d="M44.5 20H24v8.5h11.7C34.2 33.1 29.6 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 2.9l6.1-6.1C34.3 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.2-4z"/>
+      <path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.1 19.2 13 24 13c3 0 5.8 1.1 7.9 2.9l6.1-6.1C34.3 6.1 29.4 4 24 4c-7.7 0-14.4 4.4-17.7 10.7z"/>
+      <path fill="#FBBC05" d="M24 44c5.4 0 10.3-1.9 14-5.1l-6.5-5.3C29.6 35.4 26.9 36 24 36c-5.6 0-10.2-3.8-11.8-9l-6.9 5.3C8.8 40 15.9 44 24 44z"/>
+      <path fill="#EA4335" d="M44.5 20H24v8.5h11.7c-.8 2.4-2.4 4.4-4.5 5.8l6.5 5.3C41.9 36.3 44.5 30.6 44.5 24c0-1.3-.1-2.7-.2-4z"/>
+    </svg>
+  )
+}
+
 function AuthForm({ onAuthenticated, notice, lockedEmail, onSwitchAccount }) {
   const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
@@ -14,6 +25,17 @@ function AuthForm({ onAuthenticated, notice, lockedEmail, onSwitchAccount }) {
   const [error, setError] = useState('')
   const [fields, setFields] = useState({})
   const signup = mode === 'signup'
+
+  async function googleSignIn() {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      const result = await window.buildx.auth.googleLogin()
+      if (!result.ok) { setError(result.message || 'Google sign-in failed. Please try again.'); return }
+      onAuthenticated(result, false)
+    } catch { setError('Could not complete Google sign-in. Please try again.') } finally { setBusy(false) }
+  }
 
   async function submit(event) {
     event.preventDefault()
@@ -52,6 +74,17 @@ function AuthForm({ onAuthenticated, notice, lockedEmail, onSwitchAccount }) {
         <p className="auth-description">{lockedEmail ? 'Sign in again to continue with your open drafts.' : signup ? 'Save your ideas and access your projects across devices.' : 'Sign in to open your projects and keep planning.'}</p>
         {notice && <p className="auth-notice" role="status">{notice}</p>}
         {error && <p className="auth-error" role="alert">{error}</p>}
+        <button
+          type="button"
+          className="button button-google"
+          onClick={googleSignIn}
+          disabled={busy}
+          aria-label="Continue with Google"
+        >
+          <GoogleIcon />
+          <span>Continue with Google</span>
+        </button>
+        <div className="auth-divider" aria-hidden="true"><span>or</span></div>
         <form onSubmit={submit} noValidate>
           <fieldset disabled={busy}>
             {signup && <div className="field"><label htmlFor="auth-name">Name <span className="required-mark">*</span></label><input id="auth-name" name="name" autoComplete="name" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={Boolean(fields.name)} aria-describedby={fields.name ? 'auth-name-error' : undefined} />{fields.name && <p id="auth-name-error" className="field-error">{fields.name}</p>}</div>}

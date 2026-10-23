@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('buildx', {
     login: (input) => ipcRenderer.invoke('auth:login', input),
     logout: () => ipcRenderer.invoke('auth:logout'),
     status: () => ipcRenderer.invoke('auth:status'),
+    googleLogin: () => ipcRenderer.invoke('auth:google-login'),
     onSessionExpired: (listener) => {
       const handler = () => listener()
       ipcRenderer.on('auth:expired', handler)
