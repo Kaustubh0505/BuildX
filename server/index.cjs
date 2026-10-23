@@ -1,5 +1,6 @@
 const { MongoClient } = require('mongodb')
 const { createApi } = require('./app.cjs')
+const { sectionKeysFromEnv } = require('./generation.cjs')
 
 async function start() {
   if (!process.env.MONGODB_URI) throw new Error('Set MONGODB_URI in the server environment.')
@@ -7,7 +8,7 @@ async function start() {
   try {
     await client.connect()
     const db = client.db(process.env.MONGODB_DATABASE || 'buildx')
-    const app = await createApi({ db, geminiApiKey: process.env.GEMINI_API_KEY || '' })
+    const app = await createApi({ db, groqApiKey: process.env.GROQ_API_KEY || '', groqSectionKeys: sectionKeysFromEnv(process.env) })
     const server = app.listen(Number(process.env.PORT || 3001), process.env.HOST || '127.0.0.1')
     await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject) })
     console.log('BuildX API ready.')

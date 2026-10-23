@@ -133,10 +133,11 @@ test('generation version conflict preserves the current cloud blueprint and fail
   const project = await store.create({ title: 'Concurrent plan', problem: 'A complete brief.' })
   const content = Object.fromEntries(SECTION_KEYS.map((key) => [key, `Saved ${key}`]))
   const generated = await store.saveBlueprint(project.id, content, project.version)
-  const service = createGenerationService({ store, createClient: async () => ({ interactions: { create: async () => {
-    await store.saveSection(project.id, 'screens', 'An edit from another device', generated.version)
-    return { output_text: JSON.stringify(content) }
-  } } }) })
+  const service = createGenerationService({ store, createClient: async () => ({ chat: { completions: { create: async (request) => {
+    if (request.response_format.json_schema.schema.required[0] === 'screens') await store.saveSection(project.id, 'screens', 'An edit from another device', generated.version)
+    const section = request.response_format.json_schema.schema.required[0]
+    return { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ [section]: content[section] }) } }] }
+  } } } }) })
   service.setApiKey('session-only-key')
   await assert.rejects(service.generate(project.id, generated.version), { code: 'CONFLICT' })
   const current = await store.get(project.id)

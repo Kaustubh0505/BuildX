@@ -33,10 +33,10 @@ async function main() {
   const dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-ui-'))
   let app
   fixture = await createDesktopFixture({
-    geminiApiKey: 'server-test-key',
-    createGeminiClient: async () => ({ interactions: { create: async () => ({
-      output_text: JSON.stringify(Object.fromEntries(SECTION_KEYS.map(key => [key, `Generated ${key} content`]))),
-    }) } }),
+    groqApiKey: 'server-test-key',
+    createGroqClient: async () => ({ chat: { completions: { create: async (request) => ({
+      choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ [request.response_format.json_schema.schema.required[0]]: `Generated ${request.response_format.json_schema.schema.required[0]} content` }) } }],
+    }) } } }),
   })
 
   try {
@@ -61,7 +61,7 @@ async function main() {
     await page.getByRole('tab', { name: 'Blueprint' }).click()
     await page.getByRole('heading', { name: 'Generate your plan.' }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'Generate blueprint' }).isEnabled(), true)
-    assert.equal(await page.locator('#gemini-api-key').count(), 0)
+    assert.equal(await page.locator('#groq-api-key').count(), 0)
     await page.getByRole('button', { name: 'Generate blueprint' }).click()
     await page.getByRole('button', { name: 'Generate again' }).waitFor()
     await page.getByText('Generated goalsAndAssumptions content', { exact: true }).waitFor()

@@ -14,7 +14,7 @@ const SECTION_KEYS = Object.freeze([
   'dataEntities',
   'apiEndpoints',
   'implementationPhases',
-  'testPlan',
+  'testPlan', // Legacy schema key; now stores the AI agent build prompt.
 ])
 
 class ProjectStoreError extends Error {

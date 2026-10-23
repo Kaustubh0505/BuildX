@@ -14,7 +14,7 @@ const SECTION_TITLES = Object.freeze({
   dataEntities: 'Data entities',
   apiEndpoints: 'API endpoints',
   implementationPhases: 'Implementation phases',
-  testPlan: 'Test plan',
+  testPlan: 'AI agent build prompt',
 })
 const FONT_PATH = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'
 
@@ -115,15 +115,15 @@ function createExportService({ store, showSaveDialog, filesystem = fs, now = () 
     requireBlueprint(project)
     const extension = format === 'pdf' ? 'pdf' : 'md'
     const result = await showSaveDialog(window, {
-      title: `Export ${format === 'pdf' ? 'PDF' : 'Markdown'} blueprint`,
-      defaultPath: `${safeFileName(project.title)}.${extension}`,
+      title: format === 'prompt' ? 'Export AI agent build prompt' : `Export ${format === 'pdf' ? 'PDF' : 'Markdown'} blueprint`,
+      defaultPath: `${safeFileName(project.title)}${format === 'prompt' ? '-build-prompt' : ''}.${extension}`,
       buttonLabel: 'Export',
       filters: [{ name: format === 'pdf' ? 'PDF document' : 'Markdown document', extensions: [extension] }],
     })
     if (result.canceled || !result.filePath) return { canceled: true }
     const filePath = path.extname(result.filePath).toLowerCase() === `.${extension}` ? result.filePath : `${result.filePath}.${extension}`
     const date = now()
-    const data = format === 'pdf' ? await renderPdf(project, date) : markdownForProject(project, date)
+    const data = format === 'pdf' ? await renderPdf(project, date) : format === 'prompt' ? `${project.blueprint.sections.testPlan.trimEnd()}\n` : markdownForProject(project, date)
     await atomicWrite(filePath, data, filesystem)
     return { canceled: false, filePath }
   }
@@ -131,6 +131,7 @@ function createExportService({ store, showSaveDialog, filesystem = fs, now = () 
   return {
     markdown: (id, window) => exportProject(id, 'markdown', window),
     pdf: (id, window) => exportProject(id, 'pdf', window),
+    prompt: (id, window) => exportProject(id, 'prompt', window),
   }
 }
 

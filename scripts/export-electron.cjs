@@ -47,9 +47,15 @@ async function main() {
     const pdf = await fs.readFile(path.join(directory, 'test-blueprint.pdf'))
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-')
 
+    await page.getByRole('heading', { name: 'AI agent build prompt', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Export prompt .md' }).click()
+    await page.getByText('Saved test-blueprint.md').waitFor()
+    assert.equal(await fs.readFile(path.join(directory, 'test-blueprint.md'), 'utf8'), 'Saved testPlan content\n')
+
     await page.locator('#blueprint-screens .tiptap').fill('Not saved')
     assert.equal(await page.getByRole('button', { name: 'Export Markdown' }).isDisabled(), true)
     assert.equal(await page.getByRole('button', { name: 'Export PDF' }).isDisabled(), true)
+    assert.equal(await page.getByRole('button', { name: 'Export prompt .md' }).isDisabled(), true)
     assert.equal((await fs.readFile(path.join(directory, 'test-blueprint.md'), 'utf8')).includes('Not saved'), false)
     if (process.env.BUILDX_SCREENSHOT_DIR) {
       await fs.mkdir(process.env.BUILDX_SCREENSHOT_DIR, { recursive: true })

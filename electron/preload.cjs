@@ -28,5 +28,6 @@ contextBridge.exposeInMainWorld('buildx', {
   exports: {
     markdown: (id) => ipcRenderer.invoke('exports:markdown', id),
     pdf: (id) => ipcRenderer.invoke('exports:pdf', id),
+    prompt: (id) => ipcRenderer.invoke('exports:prompt', id),
   },
 })

@@ -45,13 +45,13 @@ function parse(schema, data) {
 const publicUser = (user) => ({ id: user._id, name: user.name, email: user.email })
 const publicProject = ({ _id, ownerId, ...project }) => project
 
-async function createApi({ db, now = () => new Date(), rateLimits = true, geminiApiKey = '', createGeminiClient }) {
+async function createApi({ db, now = () => new Date(), rateLimits = true, groqApiKey = '', groqSectionKeys = {}, createGroqClient }) {
   const users = db.collection('users')
   const sessions = db.collection('sessions')
   const projects = db.collection('projects')
   const attempts = db.collection('authAttempts')
   const generationLocks = db.collection('generationLocks')
-  const generation = createGenerationService({ store: null, apiKey: geminiApiKey, ...(createGeminiClient ? { createClient: createGeminiClient } : {}) })
+  const generation = createGenerationService({ store: null, apiKey: groqApiKey, sectionApiKeys: groqSectionKeys, ...(createGroqClient ? { createClient: createGroqClient } : {}) })
   await Promise.all([
     users.createIndex({ email: 1 }, { unique: true }),
     sessions.createIndex({ tokenHash: 1 }, { unique: true }),
@@ -186,7 +186,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, gemini
     const lockId = `${req.user._id}:${req.params.id}`
     const nonce = randomUUID()
     try {
-      await generationLocks.findOneAndUpdate({ _id: lockId, expiresAt: { $lte: now() } }, { $set: { nonce, expiresAt: new Date(now().getTime() + 5 * 60 * 1000) } }, { upsert: true })
+      await generationLocks.findOneAndUpdate({ _id: lockId, expiresAt: { $lte: now() } }, { $set: { nonce, expiresAt: new Date(now().getTime() + 8 * 60 * 1000) } }, { upsert: true })
     } catch (error) {
       if (error.code === 11000) throw new ApiError(409, 'GENERATION_IN_PROGRESS', 'This project is already generating a blueprint.')
       throw error
@@ -228,7 +228,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, gemini
   })
   app.use((_req, _res, next) => next(new ApiError(404, 'NOT_FOUND', 'Endpoint not found.')))
   app.use((error, _req, res, _next) => {
-    if (error instanceof GenerationError || error instanceof ProjectStoreError) return res.status(error.code === 'CONFLICT' ? 409 : error.code === 'INCOMPLETE_BRIEF' ? 400 : 502).json({ ok: false, code: error.code, message: error.message })
+    if (error instanceof GenerationError || error instanceof ProjectStoreError) return res.status(({ CONFLICT: 409, INCOMPLETE_BRIEF: 400, GROQ_QUOTA_EXCEEDED: 429, GROQ_UNAVAILABLE: 503, GROQ_CONFIGURATION_ERROR: 503, GENERATION_TIMEOUT: 504 })[error.code] || 502).json({ ok: false, code: error.code, message: error.message })
     if (error instanceof ApiError) return res.status(error.status).json({ ok: false, code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) })
     if (error.type === 'entity.too.large') return res.status(413).json({ ok: false, code: 'REQUEST_TOO_LARGE', message: 'This request is too large.' })
     if (error.type === 'entity.parse.failed') return res.status(400).json({ ok: false, code: 'INVALID_INPUT', message: 'Invalid JSON request.' })

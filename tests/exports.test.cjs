@@ -73,6 +73,21 @@ test('PDF export writes an A4 multipage document from saved sections', async (t)
   assert.ok((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length > 9)
 })
 
+test('standalone build prompt exports only the saved Markdown with a dedicated filename', async (t) => {
+  const { directory, store, project } = await setup(t)
+  const prompt = '# Build: Studio booking\n\n## Requirements\n\n- Implement booking.\n\n## Acceptance criteria\n\n- [ ] Bookings persist.'
+  await store.saveBlueprint(project.id, { ...sections(), testPlan: prompt })
+  let options
+  const service = createExportService({ store, showSaveDialog: async (_window, value) => {
+    options = value
+    return { canceled: false, filePath: path.join(directory, 'agent-prompt') }
+  } })
+  const result = await service.prompt(project.id)
+  assert.equal(options.defaultPath, 'Studio-booking-build-prompt.md')
+  assert.equal(await fs.readFile(result.filePath, 'utf8'), `${prompt}\n`)
+  assert.equal(SECTION_TITLES.testPlan, 'AI agent build prompt')
+})
+
 test('canceling and exporting without a blueprint leave files untouched', async (t) => {
   const { directory, store, project } = await setup(t)
   let dialogs = 0

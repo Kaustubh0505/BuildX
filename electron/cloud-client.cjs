@@ -147,7 +147,7 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
       delete: async (id, version) => (await call(projectRoute(id), { method: 'DELETE', body: withVersion(version) })).project,
       saveInput: async (id, input, version) => (await call(`${projectRoute(id)}/input`, { method: 'PATCH', body: withVersion(version, input) })).project,
       saveSection: async (id, section, content, version) => (await call(`${projectRoute(id)}/sections/${encodeURIComponent(section)}`, { method: 'PATCH', body: withVersion(version, { content }) })).project,
-      generate: async (id, version) => (await call(`${projectRoute(id)}/generate`, { method: 'POST', body: withVersion(version), timeoutMs: 150000 })).project,
+      generate: async (id, version) => (await call(`${projectRoute(id)}/generate`, { method: 'POST', body: withVersion(version), timeoutMs: 390000 })).project,
       saveBlueprint: async (id, sections, version) => (await call(`${projectRoute(id)}/blueprint`, { method: 'PUT', body: withVersion(version, { sections }) })).project,
 
     }

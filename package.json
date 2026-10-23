@@ -16,7 +16,7 @@
     "test:smoke": "npm run build && node scripts/smoke-electron.cjs",
     "test:workspace": "npm run build && node scripts/workspace-electron.cjs",
     "test:export-ui": "npm run build && node scripts/export-electron.cjs",
-    "test:live-gemini": "node scripts/live-gemini.cjs",
+    "test:live-groq": "node scripts/live-groq.cjs",
     "icon:mac": "node scripts/make-icon.cjs",
     "package:mac": "npm run build && electron-builder --mac dir --arm64",
     "test:package": "node scripts/package-electron.cjs",

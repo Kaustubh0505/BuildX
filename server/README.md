@@ -12,7 +12,7 @@ From the repository root:
 npm run server:install
 docker compose up -d mongo
 cp server/.env.example server/.env
-# Set GEMINI_API_KEY in server/.env for managed blueprint generation.
+# Set GROQ_API_KEY in server/.env for managed blueprint generation.
 npm run server:start
 ```
 
@@ -30,7 +30,7 @@ The desktop API address defaults to `http://127.0.0.1:3001` in `buildx.config.js
 ## MongoDB Atlas and production configuration
 
 1. Create an Atlas cluster and a database user limited to the BuildX database. Allow connections from the API host's outbound IP address.
-2. Set the API host's `MONGODB_URI` to the Atlas connection string and `MONGODB_DATABASE` to the database name. Keep database credentials and GEMINI_API_KEY in the host's secret environment, outside source control and the desktop package.
+2. Set the API host's `MONGODB_URI` to the Atlas connection string and `MONGODB_DATABASE` to the database name. Keep database credentials and GROQ_API_KEY in the host's secret environment, outside source control and the desktop package.
 3. Run `npm ci --prefix server` and `npm run server:start` from a checkout containing both `server/` and `electron/project-store.cjs` (the latter supplies the shared section names). Configure `HOST=0.0.0.0` if your hosting environment requires it.
 4. Put the API behind HTTPS. Set `TRUST_PROXY_HOPS` only to the exact number of trusted reverse proxies in your deployment; otherwise leave it unset so clients cannot spoof the IP used for throttling.
 5. Set the public HTTPS API origin in `buildx.config.json` before `npm run package:mac`. This origin is public configuration, never a MongoDB URI. `BUILDX_API_URL` can override it when launching from a shell. Redirects, embedded credentials, and URL paths are rejected.
@@ -68,7 +68,7 @@ Every cloud project has a server-controlled owner and a `version` starting at 1.
 
 ## Desktop security and session behavior
 
-React receives only named preload methods. Tokens are held in the main process; saved tokens are encrypted with Electron `safeStorage` and written atomically with restrictive file permissions. If secure storage is unavailable, sign-in lasts for the running app session, with a visible explanation. Passwords are cleared from the form after success and never saved in projects or exports. The managed Gemini key exists only in the API server environment. Electron exposes only the named generation.generate method and forwards authenticated generation requests; users never enter a key.
+React receives only named preload methods. Tokens are held in the main process; saved tokens are encrypted with Electron `safeStorage` and written atomically with restrictive file permissions. If secure storage is unavailable, sign-in lasts for the running app session, with a visible explanation. Passwords are cleared from the form after success and never saved in projects or exports. The managed Groq key exists only in the API server environment. Electron exposes only the named generation.generate method and forwards authenticated generation requests; users never enter a key.
 
 Startup validates saved sessions through `/me`. Connection failures offer retry without discarding the encrypted token. Session expiry hides the workspace and retains drafts in memory for the same account to sign in again. Changing accounts or logging out prompts before discarding unsaved drafts. No project cache or offline write queue is created.
 
@@ -95,4 +95,22 @@ If a database password contains characters such as `@`, `#`, `/`, `?`, or `:`, p
 
 Use the exact existing database name, including letter casing, for `MONGODB_DATABASE`. MongoDB rejects creating a second database whose name differs from an existing one only by uppercase/lowercase letters.
 
-Managed generation uses Gemini 3.8 Flash through the server’s Google GenAI SDK. Responses must contain all nine sections, with one retry for malformed output. The server verifies project ownership and version, allows 10 generation attempts per user per hour and 30 per IP per hour, and holds a MongoDB lease per project to prevent duplicate work across server processes. Provider failures preserve the saved blueprint and never return SDK error details or credentials.
+Managed generation uses `openai/gpt-oss-120b` hosted on Groq through the official `groq-sdk`, with strict JSON Schema outputs. It starts nine requests in parallel, one per section, using the same saved brief and planning rules. Each request validates only its own section and retries malformed output once; successful sections are not requested again during that attempt. A failure cancels outstanding requests. All nine validated sections are saved together in one version-checked update, so partial responses cannot replace a saved blueprint. Independently generated sections may still need human review for consistency.
+
+Put the nine keys in the API server's secret environment (or local `server/.env`):
+
+| Variable | Section |
+| --- | --- |
+| `GROQ_KEY_GOALS` | Goals and assumptions |
+| `GROQ_KEY_MVP_FEATURES` | MVP features |
+| `GROQ_KEY_USER_FLOWS` | User flows |
+| `GROQ_KEY_SCREENS` | Screens |
+| `GROQ_KEY_ARCHITECTURE` | React / Node architecture |
+| `GROQ_KEY_DATA_ENTITIES` | Data entities |
+| `GROQ_KEY_API_ENDPOINTS` | API endpoints |
+| `GROQ_KEY_IMPLEMENTATION_PHASES` | Implementation phases |
+| `GROQ_KEY_BUILD_PROMPT` | AI agent build prompt |
+
+Restart the API after editing keys. A blank section entry uses `GROQ_API_KEY` if configured; alternatively provide all nine section keys and leave the shared key blank. Credentials stay on the server. Groq applies rate limits at the organization level; multiple keys in the same organization do not multiply the available quota. See https://console.groq.com/docs/rate-limits. Each generation uses nine provider requests, potentially eighteen if every section needs its malformed-output retry. Parallel calls can reduce latency, but do not guarantee a faster result.
+
+The server verifies project ownership and version, allows 10 blueprint attempts per user per hour and 30 per IP per hour, and holds a MongoDB lease per project to prevent duplicate work across server processes. Each section request has a three-minute deadline, with one malformed-output retry, within the existing desktop wait window. Provider quota, outage, and timeout failures produce sanitized messages and preserve the saved blueprint.

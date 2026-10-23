@@ -11,9 +11,9 @@
     "test": "node --test --test-concurrency=1 tests/*.test.cjs"
   },
   "dependencies": {
-    "@google/genai": "^2.30.0",
     "bcrypt": "^6.0.0",
     "express": "^5.1.0",
+    "groq-sdk": "^1.6.0",
     "helmet": "^8.1.0",
     "mongodb": "^6.20.0",
     "zod": "^4.1.0"

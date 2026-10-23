@@ -15,7 +15,7 @@ const BLUEPRINT_SECTIONS = [
   ['dataEntities', 'Data entities'],
   ['apiEndpoints', 'API endpoints'],
   ['implementationPhases', 'Implementation phases'],
-  ['testPlan', 'Test plan'],
+  ['testPlan', 'AI agent build prompt'],
 ]
 
 function projectToDraft(project) {
@@ -418,7 +418,6 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
         </nav>
 
         <div className="sidebar-account"><span className="account-avatar" aria-hidden="true">{[...user.name][0].toUpperCase()}</span><div><strong>{user.name}</strong><span>{user.email}</span></div><button type="button" onClick={logout} disabled={Boolean(operation)}>Log out</button></div>
-        <div className="sidebar-footer"><span className="footer-dot" />Cloud workspace<button type="button" onClick={() => runOperation('refreshing', refreshProjects)} disabled={Boolean(operation)} aria-label="Refresh projects">Refresh</button></div>
       </aside>
 
       <main className="workspace">
@@ -556,6 +555,10 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
                             <h2 id={`section-${key}`}>{label}</h2>
                             <span className={`save-state${sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? ' is-dirty' : ''}`} role="status" aria-live="polite"><span className="save-state-dot" />{operation === `saving section:${key}` ? 'Saving…' : sectionDrafts[key] !== selectedProject.blueprint.sections[key] ? 'Unsaved changes' : 'Saved to cloud'}</span>
                           </div>
+                          {key === 'testPlan' && <div className="export-toolbar">
+                            <p>Save this prompt as Markdown and give it to an AI coding agent to build your project.</p>
+                            <button type="button" className="button button-quiet" onClick={() => exportBlueprint('prompt')} disabled={Boolean(operation) || hasUnsavedChanges}>Export prompt .md</button>
+                          </div>}
                           {key === 'dataEntities' && <SchemaCanvas markdown={sectionDrafts[key] ?? ''} />}
                           <BlueprintEditor
                             key={`${selectedProject.id}-${selectedProject.blueprint.generatedAt}-${key}`}

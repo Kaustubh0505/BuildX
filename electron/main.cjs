@@ -64,7 +64,7 @@ function registerCloudHandlers(cloud) {
     return cloud.scope().store[method](...args)
   }, key)
   handle('generation:generate', (_event, id, version) => cloud.scope().store.generate(id, version), 'project')
-  for (const format of ['markdown', 'pdf']) handle(`exports:${format}`, (event, id) => {
+  for (const format of ['markdown', 'pdf', 'prompt']) handle(`exports:${format}`, (event, id) => {
     const service = createExportService({ store: cloud.scope().store, showSaveDialog: (window, options) => dialog.showSaveDialog(window, options) })
     return service[format](id, BrowserWindow.fromWebContents(event.sender))
   })

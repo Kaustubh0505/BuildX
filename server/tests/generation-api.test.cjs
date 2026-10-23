@@ -5,9 +5,9 @@ const { SECTION_KEYS } = require('../../electron/project-store.cjs')
 const content = Object.fromEntries(SECTION_KEYS.map((key) => [key, `**${key}** managed plan`]))
 let fixture, alice, bob, calls = 0, handler
 before(async () => {
-  fixture = await startFixture({ geminiApiKey: 'private-managed-test-key', createGeminiClient: async (key) => {
+  fixture = await startFixture({ groqApiKey: 'private-managed-test-key', createGroqClient: async (key) => {
     assert.equal(key, 'private-managed-test-key')
-    return { interactions: { create: async () => { calls++; return handler() } } }
+    return { chat: { completions: { create: async (request) => { calls++; return { choices: [{ finish_reason: 'stop', message: await handler(request.response_format.json_schema.schema.required[0]) }] } } } } }
   } })
   alice = await fixture.account()
   bob = await fixture.account()
@@ -16,6 +16,7 @@ after(async () => { await fixture?.close() })
 async function project(account = alice) {
   return (await fixture.call('/projects', { method: 'POST', token: account.token, body: { title: 'Managed plan', problem: 'Generate a blueprint without a user API key.' } })).project
 }
+const response = section => ({ content: JSON.stringify({ [section]: content[section] }) })
 const generate = (p, account = alice) => fixture.call(`/projects/${p.id}/generate`, { method: 'POST', token: account.token, body: { version: p.version } })
 
 test('managed generation authenticates owners and never accepts or returns a user key', async () => {
@@ -25,7 +26,7 @@ test('managed generation authenticates owners and never accepts or returns a use
   assert.equal((await generate(p, bob)).status, 404)
   assert.equal((await fixture.call(`/projects/${p.id}/generate`, { method: 'POST', token: alice.token, body: { version: p.version, apiKey: 'user-key' } })).status, 400)
   assert.equal(calls, before)
-  handler = async () => ({ output_text: JSON.stringify(content) })
+  handler = async section => response(section)
   const result = await generate(p)
   assert.equal(result.status, 200)
   assert.equal(result.project.version, 2)
@@ -37,17 +38,17 @@ test('managed generation authenticates owners and never accepts or returns a use
 test('malformed responses retry once and provider errors preserve saved sections without leaking secrets', async () => {
   const p = await project()
   let attempt = 0
-  handler = async () => ({ output_text: ++attempt === 1 ? '{invalid' : JSON.stringify(content) })
+  handler = async section => { attempt++; return attempt === 1 ? { content: '{invalid' } : response(section) }
   const saved = await generate(p)
   assert.equal(saved.ok, true)
-  assert.equal(attempt, 2)
+  assert.equal(attempt, 10)
   handler = async () => { throw new Error('SDK error contains private-managed-test-key') }
   const failed = await generate(saved.project)
-  assert.equal(failed.code, 'GEMINI_REQUEST_FAILED')
+  assert.equal(failed.code, 'GROQ_REQUEST_FAILED')
   assert.equal(JSON.stringify(failed).includes('private-managed-test-key'), false)
   const unchanged = await fixture.call(`/projects/${p.id}`, { token: alice.token })
   assert.deepEqual(unchanged.project.blueprint, saved.project.blueprint)
-  handler = async () => ({ output_text: '{}' })
+  handler = async () => ({ content: '{}' })
   assert.equal((await generate(saved.project)).code, 'INVALID_RESPONSE')
 })
 
@@ -55,7 +56,8 @@ test('concurrent generation is locked and an intervening edit prevents replaceme
   const p = await project()
   let release, started
   const wait = new Promise((resolve) => { started = resolve })
-  handler = async () => { started(); await new Promise((resolve) => { release = resolve }); return { output_text: JSON.stringify(content) } }
+  const gate = new Promise(resolve => { release = resolve })
+  handler = async section => { started(); await gate; return response(section) }
   const first = generate(p)
   await wait
   assert.equal((await generate(p)).code, 'GENERATION_IN_PROGRESS')
@@ -84,7 +86,7 @@ test('a missing server key reports temporary unavailability after ownership vali
 test('managed generation has a database-backed per-user quota', async () => {
   const account = await fixture.account()
   let p = await project(account)
-  handler = async () => ({ output_text: JSON.stringify(content) })
+  handler = async section => response(section)
   for (let i = 0; i < 10; i++) {
     const result = await generate(p, account)
     assert.equal(result.status, 200)
