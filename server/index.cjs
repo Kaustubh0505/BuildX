@@ -9,7 +9,7 @@ async function start() {
     await client.connect()
     const db = client.db(process.env.MONGODB_DATABASE || 'buildx')
     const app = await createApi({ db, groqApiKey: process.env.GROQ_API_KEY || '', groqSectionKeys: sectionKeysFromEnv(process.env) })
-    const server = app.listen(Number(process.env.PORT || 3001), process.env.HOST || '127.0.0.1')
+    const server = app.listen(Number(process.env.PORT || 10000), '0.0.0.0')
     await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject) })
     console.log('BuildX API ready.')
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close(async () => { await client.close(); process.exit(0) }))
