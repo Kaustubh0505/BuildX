@@ -60,6 +60,38 @@ test('encrypted seven-day session survives restart, exposes no token, and logout
   assert.equal((await createCloudClient(options).status()).user, null)
 })
 
+test('signup starts a secure session without a separate login', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-signup-client-'))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  const options = { apiUrl: fixture.url, sessionFile: path.join(directory, 'auth-session.enc'), localDirectory: path.join(directory, 'projects'), secureStorage: encryption() }
+  const client = createCloudClient(options)
+  const result = await client.signup({ name: 'New Builder', email: 'new-builder@example.com', password: 'pass' })
+  assert.equal(result.user.name, 'New Builder')
+  assert.equal(result.token, undefined)
+  assert.equal((await client.scope().store.list()).projects.length, 0)
+  assert.equal((await createCloudClient(options).status()).user.id, result.user.id)
+})
+
+test('signup signs in automatically when an older API omits the session', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'buildx-legacy-signup-'))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  let loginCalls = 0
+  const fetchImpl = async (url, options) => {
+    const response = await fetch(url, options)
+    if (url.endsWith('/api/auth/login')) loginCalls += 1
+    if (!url.endsWith('/api/auth/signup')) return response
+    const body = await response.json()
+    delete body.token
+    delete body.expiresAt
+    return new Response(JSON.stringify(body), { status: response.status, headers: { 'Content-Type': 'application/json' } })
+  }
+  const client = createCloudClient({ apiUrl: fixture.url, sessionFile: path.join(directory, 'auth-session.enc'), localDirectory: path.join(directory, 'projects'), secureStorage: encryption(), fetchImpl })
+  const result = await client.signup({ name: 'Older API', email: 'older-api@example.com', password: 'pass' })
+  assert.equal(result.user.name, 'Older API')
+  assert.equal(loginCalls, 1)
+  assert.equal((await client.status()).user.id, result.user.id)
+})
+
 test('unavailable encryption uses memory only; connection errors preserve saved sessions; offline logout clears them', async (t) => {
   const memory = await setup(t, { secureStorage: { isEncryptionAvailable: () => false } })
   assert.match((await memory.client.login(memory.credentials)).warning, /app session/)

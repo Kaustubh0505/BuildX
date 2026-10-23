@@ -122,6 +122,18 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
       throw new CloudError('AUTH_REQUIRED', 'Sign in to continue.')
     }
   }
+  async function rememberSession(result) {
+    if (!/^[a-f0-9]{64}$/.test(result.token || '') || !result.user?.id || !Number.isFinite(Date.parse(result.expiresAt))) {
+      throw new CloudError('SERVER_ERROR', 'Could not start a secure session. Please try again.')
+    }
+    token = result.token; user = result.user; expiresAt = result.expiresAt; epoch += 1
+    persistenceWarning = ''
+    try {
+      if (!secureStorage?.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+      await atomicSession(sessionFile, secureStorage.encryptString(JSON.stringify({ apiUrl: baseUrl, token, expiresAt })))
+    } catch { persistenceWarning = 'Signed in for this app session. Secure storage was unavailable, so you will need to sign in after closing BuildX.' }
+    return { user, expiresAt, warning: persistenceWarning }
+  }
   function scope() {
     const session = token
     const expectedEpoch = epoch
@@ -163,18 +175,22 @@ function createCloudClient({ apiUrl, sessionFile, secureStorage, localDirectory,
       user = result.user
       return { user, expiresAt, warning: persistenceWarning }
     },
-    async signup(input) { return request('/api/auth/signup', { method: 'POST', body: input }) },
+    async signup(input) {
+      await initialize()
+      if (token) throw new CloudError('ALREADY_SIGNED_IN', 'Sign out before switching accounts.')
+      let result = await request('/api/auth/signup', { method: 'POST', body: input })
+      // Older deployed servers return only the new user. Sign in automatically there too.
+      if (!result.token) {
+        try { result = await request('/api/auth/login', { method: 'POST', body: { email: input.email, password: input.password } }) }
+        catch { throw new CloudError('SIGNUP_LOGIN_FAILED', 'Account created, but automatic sign-in failed. Sign in with your new account.') }
+      }
+      return rememberSession(result)
+    },
     async login(input) {
       await initialize()
       if (token) throw new CloudError('ALREADY_SIGNED_IN', 'Sign out before switching accounts.')
       const result = await request('/api/auth/login', { method: 'POST', body: input })
-      token = result.token; user = result.user; expiresAt = result.expiresAt; epoch += 1
-      persistenceWarning = ''
-      try {
-        if (!secureStorage?.isEncryptionAvailable()) throw new Error('Encryption unavailable')
-        await atomicSession(sessionFile, secureStorage.encryptString(JSON.stringify({ apiUrl: baseUrl, token, expiresAt })))
-      } catch { persistenceWarning = 'Signed in for this app session. Secure storage was unavailable, so you will need to sign in after closing BuildX.' }
-      return { user, expiresAt, warning: persistenceWarning }
+      return rememberSession(result)
     },
     async logout() {
       await initialize()

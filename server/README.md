@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-The desktop API address defaults to `http://127.0.0.1:3001` in `buildx.config.json`. Override it for development with `BUILDX_API_URL`. The app must be online to open and save projects. Open drafts stay in memory after a failed request; Retry repeats the operation. Project conflicts require an explicit reload with discard confirmation.
+The desktop API address defaults to the deployed HTTPS BuildX API in `buildx.config.json`. Override it for local development with `BUILDX_API_URL=http://127.0.0.1:3001`. The app must be online to open and save projects. Open drafts stay in memory after a failed request; Retry repeats the operation. Project conflicts require an explicit reload with discard confirmation.
 
 ## MongoDB Atlas and production configuration
 
@@ -43,7 +43,7 @@ All responses use `{ ok: true, ... }` or `{ ok: false, code, message, fields? }`
 
 | Endpoint | Body / result |
 | --- | --- |
-| `POST /api/auth/signup` | `{ name, email, password }`; returns sanitized `user`, then the client signs in separately |
+| `POST /api/auth/signup` | `{ name, email, password }`; creates an account and session, returning sanitized `user`, opaque `token`, and `expiresAt` to Electron main only |
 | `POST /api/auth/login` | `{ email, password }`; returns sanitized `user`, opaque `token`, and `expiresAt` to Electron main only |
 | `GET /api/auth/me` | Returns sanitized `user` |
 | `POST /api/auth/logout` | Revokes the current session |

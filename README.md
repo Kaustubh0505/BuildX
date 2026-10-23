@@ -28,7 +28,15 @@ npm run package:mac
 open release/mac-arm64/BuildX.app
 ```
 
-The app is ad hoc signed for local use. It is not notarized for distribution.
+Create the downloadable Apple Silicon installer for submission:
+
+```sh
+npm run package:dmg
+```
+
+The installer is written to `release/BuildX-0.1.0-arm64.dmg`. Open it and drag BuildX into Applications. The app uses the deployed Render API from `buildx.config.json`, so recipients do not need Node.js or a local backend. Internet access and configured server-side Groq keys are required for generation.
+
+The app is ad hoc signed for local use. It is not Apple-notarized; macOS may block it on another Mac until the recipient explicitly approves opening it. This build supports Apple Silicon (M1 and newer), not Intel Macs. Before submission, verify sign-in, project save/reopen, generation, and exports against the deployed backend with a real account.
 
 Run the Electron smoke test with:
 
@@ -67,4 +75,4 @@ To test live generation using server configuration, run `node --env-file=server/
 
 The renderer receives `window.buildx` with named `auth`, `projects`, `generation`, and `exports` methods. Accounts and projects are stored in MongoDB behind the Express API. Existing local JSON projects appear automatically in the first signed-in account’s sidebar. Migration is recorded so projects are not duplicated, copied into other accounts, or restored after deletion; the original files remain untouched. Session tokens stay in Electron's main process and are encrypted for restoration when macOS secure storage is available. The Groq API key is configured only on the API server and is never sent to or packaged with the desktop app. Exports use Electron's native save dialog and the saved cloud blueprint sections.
 
-For local setup, MongoDB Atlas configuration, the API contract, and authentication tests, see [server/README.md](server/README.md). The default packaged app requires the local API; set a public HTTPS API origin in `buildx.config.json` before building for remote use.
+For local setup, MongoDB Atlas configuration, the API contract, and authentication tests, see [server/README.md](server/README.md). The packaged app connects to the BuildX API at `https://buildx-46wv.onrender.com`. For local development, launch with `BUILDX_API_URL=http://127.0.0.1:3001`.

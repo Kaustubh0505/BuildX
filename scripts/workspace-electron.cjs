@@ -54,8 +54,24 @@ async function main() {
     await page.locator('#project-problem').fill('Help people book studio time.')
     await page.locator('#project-features').fill('Search and booking')
     await page.locator('#project-constraints').fill('Work on macOS')
+    let projectListRequests = 0
+    fixture.http.prependListener('request', (request, response) => {
+      if (request.method === 'GET' && request.url === '/api/projects') projectListRequests += 1
+      if (request.method === 'PATCH' && request.url?.endsWith('/input')) {
+        const finish = response.end.bind(response)
+        response.end = (...args) => { response.end = finish; setTimeout(() => finish(...args), 400) }
+      }
+    })
     await page.getByRole('button', { name: 'Save project' }).click()
+    await page.locator('.loading-overlay').getByText('Saving project…').waitFor()
+    if (process.env.BUILDX_SCREENSHOT_DIR) {
+      await fs.mkdir(process.env.BUILDX_SCREENSHOT_DIR, { recursive: true })
+      await page.screenshot({ path: path.join(process.env.BUILDX_SCREENSHOT_DIR, 'buildx-save-loader.png') })
+    }
+    assert.equal(await page.locator('#project-problem').inputValue(), 'Help people book studio time.')
     await page.getByText('Saved to cloud').waitFor()
+    await page.locator('.loading-overlay').waitFor({ state: 'hidden' })
+    assert.equal(projectListRequests, 0)
     await page.getByRole('button', { name: 'Open First plan' }).waitFor()
 
     await page.getByRole('tab', { name: 'Blueprint' }).click()

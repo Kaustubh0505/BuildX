@@ -96,6 +96,13 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, groqAp
     req.session = session
     next()
   }
+  async function startSession(user) {
+    const token = randomBytes(32).toString('hex')
+    const createdAt = now()
+    const expiresAt = new Date(createdAt.getTime() + SESSION_MS)
+    await sessions.insertOne({ userId: user._id, tokenHash: digest(token), createdAt, expiresAt })
+    return { user: publicUser(user), token, expiresAt: expiresAt.toISOString() }
+  }
   app.get('/api/health', (_req, res) => res.json({ ok: true }))
   app.post('/api/auth/signup', async (req, res) => {
     await limit(`signup:${req.ip}`, 10, 60 * 60 * 1000)
@@ -106,7 +113,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, groqAp
       if (error.code === 11000) throw new ApiError(409, 'EMAIL_EXISTS', 'An account with this email already exists. Sign in instead.')
       throw error
     }
-    res.status(201).json({ ok: true, user: publicUser(user) })
+    res.status(201).json({ ok: true, ...await startSession(user) })
   })
   app.post('/api/auth/login', async (req, res) => {
     await limit(`login-ip:${req.ip}`, 60, 15 * 60 * 1000)
@@ -118,10 +125,7 @@ async function createApi({ db, now = () => new Date(), rateLimits = true, groqAp
     const matches = await bcrypt.compare(candidate, user?.passwordHash || dummyHash) && !(legacy && Buffer.byteLength(input.password, 'utf8') > 72)
     if (!user || !matches) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.')
     if (legacy) await users.updateOne({ _id: user._id, passwordHash: user.passwordHash }, { $set: { passwordHash: await bcrypt.hash(passwordMaterial(input.password), 12), passwordScheme: 'bcrypt-sha256-v1', updatedAt: now() } })
-    const token = randomBytes(32).toString('hex')
-    const expiresAt = new Date(now().getTime() + SESSION_MS)
-    await sessions.insertOne({ userId: user._id, tokenHash: digest(token), createdAt: now(), expiresAt })
-    res.json({ ok: true, user: publicUser(user), token, expiresAt: expiresAt.toISOString() })
+    res.json({ ok: true, ...await startSession(user) })
   })
   app.get('/api/auth/me', auth, (req, res) => res.json({ ok: true, user: publicUser(req.user) }))
   app.post('/api/auth/logout', auth, async (req, res) => {

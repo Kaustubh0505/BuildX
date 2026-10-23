@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import BlueprintEditor from './BlueprintEditor.jsx'
 import SchemaCanvas from './SchemaCanvas.jsx'
 import ProjectDialog from './ProjectDialog.jsx'
+import LoadingOverlay from './LoadingIndicator.jsx'
 
 const FIELD_KEYS = ['title', 'problem', 'desiredFeatures', 'constraints']
 const EMPTY_DRAFT = { title: '', problem: '', desiredFeatures: '', constraints: '' }
@@ -33,6 +34,22 @@ function projectToSections(project) {
 
 function projectName(project) {
   return project.title || 'Untitled project'
+}
+
+function operationMessage(operation) {
+  if (operation?.startsWith('saving section:')) return 'Saving blueprint section…'
+  if (operation?.startsWith('exporting ')) return 'Exporting blueprint…'
+  return {
+    creating: 'Creating project…',
+    opening: 'Opening project…',
+    saving: 'Saving project…',
+    renaming: 'Renaming project…',
+    deleting: 'Deleting project…',
+    generating: 'Generating blueprint…',
+    'logging out': 'Signing out…',
+    reloading: 'Reloading project…',
+    loading: 'Loading projects…',
+  }[operation] || 'Working…'
 }
 
 function requireSuccess(result) {
@@ -174,6 +191,16 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
     setWarnings(listing.warnings)
   }
 
+  function updateProjectSummary(project) {
+    const summary = {
+      id: project.id, title: project.title, createdAt: project.createdAt,
+      updatedAt: project.updatedAt, version: project.version,
+      hasBlueprint: project.blueprint !== null,
+    }
+    setProjects((current) => [...current.filter((item) => item.id !== project.id), summary]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)))
+  }
+
   async function runOperation(name, action) {
     if (operationRef.current) return
     operationRef.current = true
@@ -244,7 +271,7 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
       setSelectedProject(result.project)
       setDraft(projectToDraft(result.project))
       setAttemptedSave(false)
-      await refreshProjects()
+      updateProjectSummary(result.project)
     })
   }
 
@@ -318,7 +345,7 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
       const result = requireSuccess(await window.buildx.projects.saveSection(selectedProject.id, key, content, selectedProject.version))
       setSelectedProject(result.project)
       setSectionDrafts((current) => ({ ...current, [key]: result.project.blueprint.sections[key] }))
-      await refreshProjects()
+      updateProjectSummary(result.project)
     })
   }
 
@@ -371,6 +398,10 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
 
   return (
     <div className="app-shell">
+      {(isLoading || operation) && <LoadingOverlay
+        message={operation ? operationMessage(operation) : 'Loading projects…'}
+        detail={operation === 'generating' ? 'Building your plan section by section. This can take a few minutes.' : undefined}
+      />}
       <aside className="sidebar" aria-label="Project navigation">
         <div className="brand">
           <span className="brand-mark"><BlueprintMark size={27} /></span>
@@ -382,7 +413,7 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
             <h2 className="sidebar-heading">Projects</h2>
             <span className="project-count" aria-label={`${projects.length} projects`}>{projects.length}</span>
           </div>
-          <button type="button" className="new-project-button" onClick={createProject} disabled={Boolean(operation)}>
+          <button type="button" className="new-project-button" onClick={createProject} disabled={Boolean(operation) || isLoading}>
             <PlusIcon />
             New project
           </button>
@@ -599,7 +630,7 @@ export default function App({ active, user, onLoggedOut, onDirtyChange, sessionR
             <DraftIllustration />
             <h1 id="empty-title">Start with a clear plan.</h1>
             <p>Create a project to capture your app idea, the problem it solves, and the features you have in mind.</p>
-            <button type="button" className="button button-primary empty-cta" onClick={createProject} disabled={Boolean(operation)}>
+            <button type="button" className="button button-primary empty-cta" onClick={createProject} disabled={Boolean(operation) || isLoading}>
               <PlusIcon />
               Create project
             </button>
