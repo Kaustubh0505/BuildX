@@ -8,29 +8,59 @@ const { createCloudClient, CloudError } = require('./cloud-client.cjs')
 const { createExportService, ExportError } = require('./exports.cjs')
 
 // ─── Environment configuration ─────────────────────────────────────────────
-// Load environment variables from .env files (.env in workspace root, then server/.env)
-try {
-  const dotenv = require('dotenv')
-  dotenv.config({ path: path.join(__dirname, '..', '.env') })
-  dotenv.config({ path: path.join(__dirname, '..', 'server', '.env') })
-} catch (_) {
-  if (typeof process.loadEnvFile === 'function') {
-    for (const envPath of [path.join(__dirname, '..', '.env'), path.join(__dirname, '..', 'server', '.env')]) {
-      try { process.loadEnvFile(envPath) } catch (_) {}
+// Load environment variables from .env files (.env in workspace root, server/.env, Resources, or userData)
+function loadEnvironment() {
+  const candidatePaths = [
+    path.join(__dirname, '..', '.env'),
+    path.join(__dirname, '..', 'server', '.env'),
+  ]
+  try {
+    if (process.resourcesPath) candidatePaths.push(path.join(process.resourcesPath, '.env'))
+  } catch (_) {}
+  try {
+    if (app && typeof app.getPath === 'function') {
+      candidatePaths.push(path.join(app.getPath('userData'), '.env'))
     }
+  } catch (_) {}
+
+  for (const envPath of candidatePaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        try {
+          const dotenv = require('dotenv')
+          dotenv.config({ path: envPath })
+        } catch (_) {
+          if (typeof process.loadEnvFile === 'function') {
+            process.loadEnvFile(envPath)
+          }
+        }
+      }
+    } catch (_) {}
   }
 }
+loadEnvironment()
 
 // ─── Google OAuth helpers (Authorization Code + PKCE) ──────────────────────
 // Redirect URI — must be registered in Google Cloud Console as-is.
 const GOOGLE_REDIRECT_URI = 'http://127.0.0.1:42813/oauth/callback'
 
 function getGoogleCredentials() {
+  loadEnvironment()
   const config = (() => {
     try { return require('../buildx.config.json') } catch { return {} }
   })()
-  const clientId = process.env.GOOGLE_CLIENT_ID || config.googleClientId || ''
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || config.googleClientSecret || ''
+  let userConfig = {}
+  try {
+    if (app && typeof app.getPath === 'function') {
+      const userConfigPath = path.join(app.getPath('userData'), 'buildx.config.json')
+      if (fs.existsSync(userConfigPath)) {
+        userConfig = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
+      }
+    }
+  } catch (_) {}
+
+  const clientId = process.env.GOOGLE_CLIENT_ID || userConfig.googleClientId || config.googleClientId || ''
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || userConfig.googleClientSecret || config.googleClientSecret || ''
   return { clientId, clientSecret }
 }
 
@@ -253,9 +283,17 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  loadEnvironment()
   const config = require('../buildx.config.json')
+  let userConfig = {}
+  try {
+    const userConfigPath = path.join(app.getPath('userData'), 'buildx.config.json')
+    if (fs.existsSync(userConfigPath)) {
+      userConfig = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
+    }
+  } catch (_) {}
   const cloud = createCloudClient({
-    apiUrl: process.env.BUILDX_API_URL || config.apiUrl,
+    apiUrl: process.env.BUILDX_API_URL || userConfig.apiUrl || config.apiUrl,
     sessionFile: path.join(app.getPath('userData'), 'auth-session.enc'),
     secureStorage: safeStorage,
     localDirectory: path.join(app.getPath('userData'), 'projects'),
